@@ -1,0 +1,196 @@
+/* Lumenfall Arena — page styling. One palette with the canvas art: deep indigo night,
+   warm amber light, teal lumen, rose danger. System fonts only, so nothing loads. */
+
+* { box-sizing: border-box; }
+
+html, body {
+  margin: 0;
+  padding: 0;
+  height: 100%;
+  overflow: hidden;
+  background: #070822;
+  color: #e8eaff;
+  font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  user-select: none;
+}
+
+#app { position: fixed; inset: 0; }
+#game { display: block; width: 100%; height: 100%; }
+
+/* --- HUD ------------------------------------------------------------------ */
+
+#hud {
+  position: absolute;
+  top: 0; left: 0; right: 0;
+  padding: 10px 18px 0;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.25s;
+}
+#hud.visible { opacity: 1; }
+
+.hud-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 16px;
+}
+.hud-cluster { display: flex; flex-direction: column; gap: 5px; min-width: 300px; }
+.hud-right { align-items: flex-end; font-weight: 700; font-size: 17px; color: #ffd97a; }
+.hud-right #level-text { color: #2ee6c8; }
+
+.bar-block { display: flex; align-items: center; gap: 8px; }
+.bar-label { font-size: 11px; font-weight: 700; letter-spacing: 0.12em; color: #9aa3e8; width: 36px; }
+.bar-text { font-size: 12px; color: #c9ceff; min-width: 74px; }
+.bar { background: rgba(255, 255, 255, 0.10); border-radius: 6px; overflow: hidden; }
+.bar > div { height: 100%; border-radius: 6px; transition: width 0.12s linear; }
+
+.hp-bar { width: 190px; height: 14px; background: rgba(255, 93, 122, 0.22); }
+#hp-fill { width: 100%; background: linear-gradient(90deg, #ff5d7a, #ff8f5d); }
+.dash-bar { width: 190px; height: 8px; }
+#dash-fill { width: 100%; background: #ffd97a; }
+#dash-text.ready { color: #ffd97a; font-weight: 700; }
+
+.hud-center { text-align: center; }
+#timer-text { font-size: 30px; font-weight: 800; letter-spacing: 0.06em; color: #ffe9b0; line-height: 1; text-shadow: 0 0 18px rgba(255, 179, 64, 0.45); }
+.timer-caption { font-size: 10px; letter-spacing: 0.3em; color: #9aa3e8; margin-top: 3px; }
+
+.xp-bar { height: 9px; margin-top: 8px; background: rgba(46, 230, 200, 0.18); }
+#xp-fill { width: 0%; background: linear-gradient(90deg, #2ee6c8, #8ffbe9); }
+
+/* --- Boss bar + banner ------------------------------------------------------ */
+
+#bossbar {
+  position: absolute;
+  left: 50%; bottom: 18px;
+  transform: translateX(-50%);
+  width: min(560px, 70vw);
+  text-align: center;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.3s;
+}
+#bossbar.visible { opacity: 1; }
+.boss-name { font-weight: 800; letter-spacing: 0.14em; color: #ff8fab; font-size: 14px; margin-bottom: 5px; text-shadow: 0 0 14px rgba(227, 61, 110, 0.6); }
+.boss-bar { height: 13px; background: rgba(227, 61, 110, 0.20); border: 1px solid rgba(255, 143, 171, 0.5); }
+#boss-fill { width: 100%; background: linear-gradient(90deg, #e33d6e, #ff7a4d); }
+
+#banner {
+  position: absolute;
+  top: 24%; left: 0; right: 0;
+  text-align: center;
+  opacity: 0;
+  pointer-events: none;
+  transform: scale(0.96);
+  transition: opacity 0.3s, transform 0.3s;
+}
+#banner.visible { opacity: 1; transform: scale(1); }
+.banner-title { font-size: 34px; font-weight: 900; letter-spacing: 0.08em; color: #ff5d7a; text-shadow: 0 0 26px rgba(227, 61, 110, 0.8); }
+.banner-sub { color: #ffd7e2; margin-top: 6px; font-size: 15px; }
+
+#mute-btn {
+  position: absolute;
+  right: 14px; bottom: 14px;
+  width: 42px; height: 42px;
+  border-radius: 50%;
+  border: 1px solid #39408f;
+  background: rgba(11, 14, 42, 0.8);
+  font-size: 19px;
+  cursor: pointer;
+  z-index: 30;
+}
+#mute-btn:hover { border-color: #ffd97a; }
+
+/* --- Overlay screens -------------------------------------------------------- */
+
+.screen {
+  position: absolute; inset: 0;
+  display: none;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  padding: 24px;
+  background: rgba(5, 6, 24, 0.55);
+  z-index: 20;
+}
+.screen.visible { display: flex; }
+#screen-title { background: radial-gradient(ellipse at center, rgba(5, 6, 24, 0.25), rgba(5, 6, 24, 0.78)); }
+
+.game-title {
+  font-size: clamp(44px, 9vw, 84px);
+  line-height: 0.98;
+  margin: 0 0 14px;
+  font-weight: 900;
+  letter-spacing: 0.05em;
+  color: #ffb340;
+  text-shadow: 0 0 34px rgba(255, 179, 64, 0.55), 0 2px 0 #7a4a00;
+}
+.tagline { max-width: 560px; font-size: 17px; color: #e8eaff; margin: 0 0 10px; }
+.howto { color: #9aa3e8; font-size: 14px; line-height: 1.7; margin: 0 0 22px; }
+.howto strong { color: #ffd97a; }
+.hint { color: #69709f; font-size: 12px; margin-top: 10px; }
+
+.big-btn {
+  font: inherit;
+  font-size: 18px;
+  font-weight: 800;
+  letter-spacing: 0.06em;
+  color: #1a1005;
+  background: linear-gradient(180deg, #ffd97a, #ffb340);
+  border: none;
+  border-radius: 12px;
+  padding: 14px 30px;
+  cursor: pointer;
+  box-shadow: 0 0 24px rgba(255, 179, 64, 0.4);
+}
+.big-btn:hover { filter: brightness(1.08); }
+.big-btn:active { transform: translateY(1px); }
+
+.screen-heading { font-size: 34px; font-weight: 900; letter-spacing: 0.06em; color: #ffe9b0; margin: 0 0 6px; text-shadow: 0 0 22px rgba(255, 179, 64, 0.5); }
+.screen-sub { color: #9aa3e8; margin: 0 0 20px; font-size: 15px; }
+
+/* --- Level-up cards --------------------------------------------------------- */
+
+#levelup-cards { display: flex; gap: 16px; flex-wrap: wrap; justify-content: center; }
+.card {
+  font: inherit;
+  width: 218px;
+  min-height: 168px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  padding: 18px 16px 14px;
+  border-radius: 14px;
+  border: 1px solid #39408f;
+  background: linear-gradient(180deg, rgba(20, 26, 77, 0.95), rgba(11, 14, 42, 0.95));
+  color: #e8eaff;
+  cursor: pointer;
+  transition: transform 0.12s, border-color 0.12s, box-shadow 0.12s;
+}
+.card:hover { transform: translateY(-4px); border-color: #ffb340; box-shadow: 0 10px 30px rgba(255, 179, 64, 0.25); }
+.card-tag { font-size: 11px; font-weight: 800; letter-spacing: 0.18em; color: #2ee6c8; }
+.card-title { font-size: 20px; font-weight: 800; color: #ffe9b0; }
+.card-desc { font-size: 13.5px; color: #c9ceff; line-height: 1.45; flex: 1; }
+.card-key { font-size: 11px; color: #69709f; letter-spacing: 0.1em; }
+
+/* --- End screen -------------------------------------------------------------- */
+
+#end-title { font-size: 46px; font-weight: 900; letter-spacing: 0.05em; margin: 0 0 8px; }
+#end-title.victory { color: #ffd97a; text-shadow: 0 0 30px rgba(255, 179, 64, 0.6); }
+#end-title.defeat { color: #ff5d7a; text-shadow: 0 0 30px rgba(227, 61, 110, 0.6); }
+#end-stats {
+  display: flex; gap: 14px; flex-wrap: wrap; justify-content: center;
+  margin: 6px 0 24px;
+}
+#end-stats > div {
+  min-width: 128px;
+  padding: 12px 16px;
+  border: 1px solid #39408f;
+  border-radius: 12px;
+  background: rgba(11, 14, 42, 0.85);
+  display: flex; flex-direction: column; gap: 4px;
+}
+#end-stats span { font-size: 11px; letter-spacing: 0.14em; color: #9aa3e8; text-transform: uppercase; }
+#end-stats strong { font-size: 22px; color: #ffe9b0; }

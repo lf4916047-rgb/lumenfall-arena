@@ -1,0 +1,93 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Lumenfall Arena — survive to dawn</title>
+<link rel="icon" href="data:,">
+<link rel="stylesheet" href="./style.css">
+</head>
+<body>
+<div id="app">
+  <canvas id="game"></canvas>
+
+  <!-- Heads-up display -->
+  <div id="hud">
+    <div class="hud-row">
+      <div class="hud-cluster">
+        <div class="bar-block">
+          <span class="bar-label">HP</span>
+          <div class="bar hp-bar"><div id="hp-fill"></div></div>
+          <span id="hp-text" class="bar-text">100 / 100</span>
+        </div>
+        <div class="bar-block">
+          <span class="bar-label">DASH</span>
+          <div class="bar dash-bar"><div id="dash-fill"></div></div>
+          <span id="dash-text" class="bar-text">DASH READY</span>
+        </div>
+      </div>
+      <div class="hud-center">
+        <div id="timer-text">5:00</div>
+        <div class="timer-caption">UNTIL DAWN</div>
+      </div>
+      <div class="hud-cluster hud-right">
+        <div id="kills-text">☠ 0</div>
+        <div id="level-text">LV 1</div>
+      </div>
+    </div>
+    <div class="bar xp-bar"><div id="xp-fill"></div></div>
+  </div>
+
+  <!-- Boss health -->
+  <div id="bossbar">
+    <div class="boss-name">👑 THE HOLLOW KING</div>
+    <div class="bar boss-bar"><div id="boss-fill"></div></div>
+  </div>
+
+  <!-- Boss warning banner -->
+  <div id="banner">
+    <div class="banner-title">⚠ THE HOLLOW KING STIRS ⚠</div>
+    <div class="banner-sub"></div>
+  </div>
+
+  <button id="mute-btn" title="Mute (M)">🔊</button>
+
+  <!-- Title screen -->
+  <section id="screen-title" class="screen">
+    <h1 class="game-title">LUMENFALL<br>ARENA</h1>
+    <p class="tagline">The last Star-Warden against the swarm. Survive five minutes to dawn — and unmake the Hollow King.</p>
+    <p class="howto">
+      <strong>WASD / Arrows</strong> move &nbsp;·&nbsp; <strong>Space / Shift</strong> dash &nbsp;·&nbsp; <strong>P</strong> pause &nbsp;·&nbsp; <strong>M</strong> mute<br>
+      Your weapons fire on their own. Gather the teal lumen shards, level up, and build your arsenal.
+    </p>
+    <button id="start-btn" class="big-btn">▶ &nbsp;START THE VIGIL</button>
+    <p class="hint">or press Enter</p>
+  </section>
+
+  <!-- Level-up choices -->
+  <section id="screen-levelup" class="screen">
+    <h2 class="screen-heading">✦ THE LIGHT GROWS ✦</h2>
+    <p class="screen-sub">Choose one blessing</p>
+    <div id="levelup-cards"></div>
+  </section>
+
+  <!-- Pause -->
+  <section id="screen-pause" class="screen">
+    <h2 class="screen-heading">PAUSED</h2>
+    <p class="screen-sub">The swarm waits, barely.</p>
+    <button id="resume-btn" class="big-btn">RESUME</button>
+    <p class="hint">or press P</p>
+  </section>
+
+  <!-- Victory / game over -->
+  <section id="screen-end" class="screen">
+    <h2 id="end-title" class="victory">🌅 DAWN BREAKS</h2>
+    <p id="end-sub" class="screen-sub"></p>
+    <div id="end-stats"></div>
+    <button id="restart-btn" class="big-btn">↻ &nbsp;PLAY AGAIN</button>
+    <p class="hint">or press R</p>
+  </section>
+</div>
+<script type="module" src="./src/main.js"></script>
+</body>
+</html>
