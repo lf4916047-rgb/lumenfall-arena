@@ -1,12 +1,14 @@
-// Lumenfall Arena — rendering: everything the canvas shows, drawn with paths and cached
-// glow sprites only (no images). The night is layered — a baked nebula-and-starfield plate,
-// drifting aurora light, twinkling bright stars — and everything that burns (the warden,
-// bolts, shards, the Hollow King) is composited additively so the arena feels lit, not
-// painted. Each enemy kind keeps its own silhouette, now shaded and detailed: winged moth,
-// dart, ringed spitter, hexagonal brute, and the crowned, rune-ringed Hollow King.
+// Lumenfall Arena — rendering: everything the canvas shows. The night is layered —
+// a baked nebula-and-starfield plate, twinkling bright stars — and everything that
+// burns (the warden, bolts, shards, the Hollow King) is composited additively so
+// the arena feels lit, not painted. The creatures themselves are pre-rendered
+// sprites (sprites.js bakes them once at load): a hooded Star-warden, fuzzy void
+// moths, bat-winged gloomwings, horned hexshell hulks, the floating Watcher, and
+// the tall robed Hollow King — the frame loop just blits the current frame.
 
 import { COLORS } from './config.js';
 import { getTouchUI } from './input.js';
+import { getSprites, getShardSprite, blit, blitFlash, HOLLOW_HEART } from './sprites.js';
 
 const TAU = Math.PI * 2;
 
@@ -17,7 +19,6 @@ const TAU = Math.PI * 2;
 // than shadowBlur everywhere, and it stacks into real bloom where lights overlap.
 
 let bgCanvas = null;
-let vignetteCanvas = null;
 let dangerCanvas = null;
 let twinkles = [];
 
@@ -65,7 +66,7 @@ function drawGlow(ctx, x, y, radius, color, alpha) {
   ctx.globalCompositeOperation = 'source-over';
 }
 
-export function initBackground(width, height) {
+export function initBackground(width, height, arena) {
   // The baked plate: deep space, five nebula washes, and two static star layers.
   bgCanvas = makeCanvas(width, height);
   const c = bgCanvas.getContext('2d');
@@ -123,15 +124,70 @@ export function initBackground(width, height) {
     });
   }
 
-  // Vignettes: a cool one that seats the arena in the dark, and a red one that pulses
-  // when the warden is close to falling.
-  vignetteCanvas = makeCanvas(width, height);
-  const v = vignetteCanvas.getContext('2d');
-  const vg = v.createRadialGradient(width / 2, height / 2, Math.min(width, height) * 0.42, width / 2, height / 2, Math.max(width, height) * 0.74);
+  // The arena's static dressing bakes into the plate too — its fill gradient, the
+  // pool of light, the grid, the burning border. Per frame this all used to cost
+  // two full-arena gradient fills and a shadowBlur stroke; baked, it costs nothing.
+  // Only the turning rune circles stay live (they are drawn in drawArena).
+  if (arena) {
+    const a = arena;
+    const fill = c.createLinearGradient(0, a.y, 0, a.y + a.h);
+    fill.addColorStop(0, '#0e1132');
+    fill.addColorStop(0.5, COLORS.arenaFill);
+    fill.addColorStop(1, '#080a22');
+    c.fillStyle = fill;
+    c.fillRect(a.x, a.y, a.w, a.h);
+    const cx = a.x + a.w / 2;
+    const cy = a.y + a.h / 2;
+    const pool = c.createRadialGradient(cx, cy, 10, cx, cy, Math.min(a.w, a.h) * 0.52);
+    pool.addColorStop(0, 'rgba(52, 64, 150, 0.20)');
+    pool.addColorStop(1, 'rgba(52, 64, 150, 0)');
+    c.fillStyle = pool;
+    c.fillRect(a.x, a.y, a.w, a.h);
+    c.fillStyle = 'rgba(140, 155, 255, 0.10)';
+    for (const [dx, dy] of [[0, -1], [0, 1], [-1, 0], [1, 0]]) {
+      const px = cx + dx * Math.min(a.w, a.h) * 0.36;
+      const py = cy + dy * Math.min(a.w, a.h) * 0.36;
+      c.save();
+      c.translate(px, py);
+      c.rotate(Math.PI / 4);
+      c.fillRect(-6, -6, 12, 12);
+      c.restore();
+    }
+    c.strokeStyle = COLORS.gridLine;
+    c.lineWidth = 1;
+    c.beginPath();
+    for (let x = a.x + 48; x < a.x + a.w; x += 48) { c.moveTo(x, a.y); c.lineTo(x, a.y + a.h); }
+    for (let y = a.y + 48; y < a.y + a.h; y += 48) { c.moveTo(a.x, y); c.lineTo(a.x + a.w, y); }
+    c.stroke();
+    c.save();
+    c.shadowColor = COLORS.arenaLine;
+    c.shadowBlur = 14;
+    c.strokeStyle = '#4a54c8';
+    c.lineWidth = 2;
+    c.strokeRect(a.x, a.y, a.w, a.h);
+    c.restore();
+    c.strokeStyle = 'rgba(160, 170, 255, 0.28)';
+    c.lineWidth = 1;
+    c.strokeRect(a.x - 5, a.y - 5, a.w + 10, a.h + 10);
+    c.strokeStyle = 'rgba(190, 198, 255, 0.75)';
+    c.lineWidth = 3;
+    const cl = 26;
+    c.beginPath();
+    for (const [px, py, sx, sy] of [[a.x, a.y, 1, 1], [a.x + a.w, a.y, -1, 1], [a.x, a.y + a.h, 1, -1], [a.x + a.w, a.y + a.h, -1, -1]]) {
+      c.moveTo(px + cl * sx, py);
+      c.lineTo(px, py);
+      c.lineTo(px, py + cl * sy);
+    }
+    c.stroke();
+  }
+
+  // The cool vignette that seats the arena in the dark bakes over the plate;
+  // only the red danger vignette stays its own canvas, since it pulses live.
+  const vg = c.createRadialGradient(width / 2, height / 2, Math.min(width, height) * 0.42, width / 2, height / 2, Math.max(width, height) * 0.74);
   vg.addColorStop(0, 'rgba(3, 4, 16, 0)');
   vg.addColorStop(1, 'rgba(3, 4, 16, 0.52)');
-  v.fillStyle = vg;
-  v.fillRect(0, 0, width, height);
+  c.fillStyle = vg;
+  c.fillRect(0, 0, width, height);
 
   dangerCanvas = makeCanvas(width, height);
   const d = dangerCanvas.getContext('2d');
@@ -159,8 +215,8 @@ export function renderGame(ctx, game, width, height) {
   drawParticles(ctx, game);
   drawFloatTexts(ctx, game);
   ctx.restore();
-  // The vignette sits over the world but never shakes with it.
-  if (vignetteCanvas) ctx.drawImage(vignetteCanvas, 0, 0);
+  // (The cool vignette is baked into the background plate now; only the red
+  // danger pulse still draws over the world, and it never shakes with it.)
   const player = game.player;
   if (dangerCanvas && game.state === 'playing' && player.alive && player.hp < player.maxHp * 0.3) {
     ctx.globalAlpha = 0.35 + 0.3 * (0.5 + 0.5 * Math.sin(game.time * 5.2));
@@ -247,22 +303,11 @@ function drawBackground(ctx, game, width, height) {
 }
 
 function drawArena(ctx, game) {
+  // Everything static about the arena — fill, pool, grid, border — is baked into
+  // the background plate. What stays live is the warden's turning rune circles.
   const a = game.arena;
-  const fill = ctx.createLinearGradient(0, a.y, 0, a.y + a.h);
-  fill.addColorStop(0, '#0e1132');
-  fill.addColorStop(0.5, COLORS.arenaFill);
-  fill.addColorStop(1, '#080a22');
-  ctx.fillStyle = fill;
-  ctx.fillRect(a.x, a.y, a.w, a.h);
-
-  // A pool of light at the arena's heart, and the warden's turning rune circles.
   const cx = a.x + a.w / 2;
   const cy = a.y + a.h / 2;
-  const pool = ctx.createRadialGradient(cx, cy, 10, cx, cy, Math.min(a.w, a.h) * 0.52);
-  pool.addColorStop(0, 'rgba(52, 64, 150, 0.20)');
-  pool.addColorStop(1, 'rgba(52, 64, 150, 0)');
-  ctx.fillStyle = pool;
-  ctx.fillRect(a.x, a.y, a.w, a.h);
   ctx.save();
   ctx.translate(cx, cy);
   ctx.strokeStyle = 'rgba(140, 155, 255, 0.08)';
@@ -281,67 +326,15 @@ function drawArena(ctx, game) {
   ctx.stroke();
   ctx.setLineDash([]);
   ctx.restore();
-  // Four dim diamonds mark the cardinal points of the floor.
-  ctx.fillStyle = 'rgba(140, 155, 255, 0.10)';
-  for (const [dx, dy] of [[0, -1], [0, 1], [-1, 0], [1, 0]]) {
-    const px = cx + dx * Math.min(a.w, a.h) * 0.36;
-    const py = cy + dy * Math.min(a.w, a.h) * 0.36;
-    ctx.save();
-    ctx.translate(px, py);
-    ctx.rotate(Math.PI / 4);
-    ctx.fillRect(-6, -6, 12, 12);
-    ctx.restore();
-  }
-
-  ctx.strokeStyle = COLORS.gridLine;
-  ctx.lineWidth = 1;
-  ctx.beginPath();
-  for (let x = a.x + 48; x < a.x + a.w; x += 48) { ctx.moveTo(x, a.y); ctx.lineTo(x, a.y + a.h); }
-  for (let y = a.y + 48; y < a.y + a.h; y += 48) { ctx.moveTo(a.x, y); ctx.lineTo(a.x + a.w, y); }
-  ctx.stroke();
-
-  // The border burns softly, and its corners flare.
-  ctx.save();
-  ctx.shadowColor = COLORS.arenaLine;
-  ctx.shadowBlur = 14;
-  ctx.strokeStyle = '#4a54c8';
-  ctx.lineWidth = 2;
-  ctx.strokeRect(a.x, a.y, a.w, a.h);
-  ctx.restore();
-  ctx.strokeStyle = 'rgba(160, 170, 255, 0.28)';
-  ctx.lineWidth = 1;
-  ctx.strokeRect(a.x - 5, a.y - 5, a.w + 10, a.h + 10);
-  ctx.strokeStyle = 'rgba(190, 198, 255, 0.75)';
-  ctx.lineWidth = 3;
-  const cl = 26;
-  ctx.beginPath();
-  for (const [px, py, sx, sy] of [[a.x, a.y, 1, 1], [a.x + a.w, a.y, -1, 1], [a.x, a.y + a.h, 1, -1], [a.x + a.w, a.y + a.h, -1, -1]]) {
-    ctx.moveTo(px + cl * sx, py);
-    ctx.lineTo(px, py);
-    ctx.lineTo(px, py + cl * sy);
-  }
-  ctx.stroke();
 }
 
 function drawShards(ctx, game) {
+  // One baked sprite per shard (glow and gem together), pulsed by scale alone.
+  const img = getShardSprite();
   for (const shard of game.shards) {
     const size = shard.large ? 9 : 5.5;
-    const pulse = 1 + Math.sin(shard.t) * 0.15;
-    const color = shard.large ? COLORS.shardLarge : COLORS.shard;
-    drawGlow(ctx, shard.x, shard.y, size * 3.4, COLORS.shard, shard.large ? 0.5 : 0.34);
-    ctx.save();
-    ctx.translate(shard.x, shard.y);
-    ctx.rotate(Math.PI / 4 + shard.t * 0.4);
-    const s = size * pulse;
-    const grad = ctx.createLinearGradient(0, -s / 2, 0, s / 2);
-    grad.addColorStop(0, COLORS.shardLarge);
-    grad.addColorStop(0.5, color);
-    grad.addColorStop(1, '#0f9d84');
-    ctx.fillStyle = grad;
-    ctx.fillRect(-s / 2, -s / 2, s, s);
-    ctx.fillStyle = 'rgba(255, 255, 255, 0.75)';
-    ctx.fillRect(-s * 0.18, -s * 0.18, s * 0.36, s * 0.36);
-    ctx.restore();
+    const extent = size * 4.6 * (1 + Math.sin(shard.t) * 0.15);
+    ctx.drawImage(img, shard.x - extent / 2, shard.y - extent / 2, extent, extent);
   }
 }
 
@@ -396,16 +389,37 @@ function drawEnemy(ctx, game, enemy) {
   // Everything hostile smoulders: a low halo in its own colour under the body.
   const baseColor = COLORS[{ moth: 'enemyMoth', darter: 'enemyDarter', brute: 'enemyBrute', spitter: 'enemySpitter', boss: 'boss' }[enemy.kind]];
   if (enemy.kind !== 'boss') {
-    drawGlow(ctx, enemy.x, enemy.y, enemy.radius * (enemy.elite ? 2.5 : 2.0), baseColor, enemy.elite ? 0.4 : 0.28);
+    // The small fry burn a little tighter — at swarm density their halos are
+    // the single biggest sheet of additive blending in the frame.
+    const glowR = enemy.elite ? 2.2 : (enemy.kind === 'moth' || enemy.kind === 'darter') ? 1.7 : 2.0;
+    drawGlow(ctx, enemy.x, enemy.y, enemy.radius * glowR, baseColor, enemy.elite ? 0.4 : 0.28);
   }
   ctx.save();
   ctx.translate(enemy.x, enemy.y);
-  switch (enemy.kind) {
-    case 'moth': drawMoth(ctx, enemy); break;
-    case 'darter': drawDarter(ctx, enemy); break;
-    case 'brute': drawBrute(ctx, enemy); break;
-    case 'spitter': drawSpitter(ctx, game, enemy); break;
-    case 'boss': drawBoss(ctx, game, enemy); break;
+  if (enemy.kind === 'boss') {
+    drawBoss(ctx, game, enemy);
+  } else {
+    const sprites = getSprites();
+    const set = sprites[enemy.kind][enemy.elite ? 'elite' : 'normal'];
+    // Each kind lives at its own tempo: the moth's wingbeat is frantic, the
+    // Watcher's tentacles barely stir. framePhase staggers a swarm out of sync.
+    let frame = 0;
+    if (enemy.kind === 'moth') {
+      frame = Math.floor(game.time * 15 + enemy.framePhase * 3) % 3;
+      ctx.rotate(Math.atan2(enemy.vy, enemy.vx));
+    } else if (enemy.kind === 'darter') {
+      frame = Math.floor(game.time * 11 + enemy.framePhase * 2) % 2;
+      ctx.rotate(Math.atan2(enemy.vy, enemy.vx));
+    } else if (enemy.kind === 'brute') {
+      frame = Math.floor(game.time * 5.5 + enemy.framePhase) % 2;
+      ctx.rotate(Math.atan2(enemy.vy, enemy.vx) + Math.sin(enemy.wobble * 0.6) * 0.05);
+    } else if (enemy.kind === 'spitter') {
+      frame = Math.floor(game.time * 1.7 + enemy.framePhase) % 2;
+      ctx.rotate(Math.sin(enemy.wobble * 0.3) * 0.2);
+    }
+    blit(ctx, set, frame, enemy.radius);
+    if (enemy.kind === 'spitter') drawWatcherPupil(ctx, game, enemy);
+    if (enemy.flash > 0) blitFlash(ctx, set, frame, enemy.radius, (enemy.flash / 0.09) * 0.8);
   }
   if (enemy.elite) {
     ctx.strokeStyle = COLORS.bossCrown;
@@ -418,14 +432,6 @@ function drawEnemy(ctx, game, enemy) {
     ctx.beginPath();
     ctx.arc(0, 0, enemy.radius + 7, 0, TAU);
     ctx.stroke();
-  }
-  if (enemy.flash > 0) {
-    ctx.globalAlpha = (enemy.flash / 0.09) * 0.75;
-    ctx.fillStyle = COLORS.white;
-    ctx.beginPath();
-    ctx.arc(0, 0, enemy.radius, 0, TAU);
-    ctx.fill();
-    ctx.globalAlpha = 1;
   }
   ctx.restore();
   // A slim health bar over anything tougher than a moth.
@@ -440,189 +446,30 @@ function drawEnemy(ctx, game, enemy) {
   }
 }
 
-function drawMoth(ctx, enemy) {
+// The Watcher's pupil is the one piece of the sprite that stays live: it rolls
+// in its socket to track the warden, so the horror is always looking at you.
+function drawWatcherPupil(ctx, game, enemy) {
   const r = enemy.radius;
-  const flap = Math.sin(enemy.wobble * 2.4) * 0.5;
-  for (const side of [-1, 1]) {
-    ctx.save();
-    ctx.rotate(side * (0.7 + flap * 0.4));
-    const wing = ctx.createRadialGradient(0, 0, 1, side * r * 0.85, 0, r * 0.95);
-    wing.addColorStop(0, '#ff7ba0');
-    wing.addColorStop(0.55, COLORS.enemyMoth);
-    wing.addColorStop(1, '#a1123c');
-    ctx.fillStyle = wing;
-    ctx.beginPath();
-    ctx.ellipse(side * r * 0.85, 0, r * 0.82, r * 0.44, 0, 0, TAU);
-    ctx.fill();
-    // A pale eye-spot on each wing, like a real moth's warning.
-    ctx.fillStyle = 'rgba(255, 215, 226, 0.8)';
-    ctx.beginPath();
-    ctx.arc(side * r * 0.95, 0, r * 0.13, 0, TAU);
-    ctx.fill();
-    ctx.restore();
-  }
-  const body = ctx.createRadialGradient(-r * 0.2, -r * 0.2, 1, 0, 0, r * 0.66);
-  body.addColorStop(0, '#ff8fab');
-  body.addColorStop(1, '#c21847');
-  ctx.fillStyle = body;
-  ctx.beginPath();
-  ctx.arc(0, 0, r * 0.62, 0, TAU);
-  ctx.fill();
-  ctx.fillStyle = '#ffe3ec';
-  ctx.beginPath();
-  ctx.arc(-r * 0.16, -r * 0.1, r * 0.13, 0, TAU);
-  ctx.fill();
-  ctx.beginPath();
-  ctx.arc(r * 0.16, -r * 0.1, r * 0.13, 0, TAU);
-  ctx.fill();
-}
-
-function drawDarter(ctx, enemy) {
-  const r = enemy.radius;
-  const angle = Math.atan2(enemy.vy, enemy.vx);
-  ctx.rotate(angle);
-  // Speed streaks off the tail while it lunges.
-  const speed = Math.hypot(enemy.vx, enemy.vy);
-  if (speed > 130) {
-    ctx.strokeStyle = 'rgba(255, 122, 77, 0.45)';
-    ctx.lineWidth = 2;
-    ctx.beginPath();
-    ctx.moveTo(-r * 0.9, r * 0.4);
-    ctx.lineTo(-r * (1.6 + speed / 300), r * 0.4);
-    ctx.moveTo(-r * 0.9, -r * 0.4);
-    ctx.lineTo(-r * (1.6 + speed / 300), -r * 0.4);
-    ctx.stroke();
-  }
-  const bodyGrad = ctx.createLinearGradient(-r, 0, r * 1.3, 0);
-  bodyGrad.addColorStop(0, '#a12e08');
-  bodyGrad.addColorStop(0.55, COLORS.enemyDarter);
-  bodyGrad.addColorStop(1, '#ffc9a3');
-  ctx.fillStyle = bodyGrad;
-  ctx.beginPath();
-  ctx.moveTo(r * 1.3, 0);
-  ctx.lineTo(-r * 0.35, r * 0.34);
-  ctx.lineTo(-r * 0.95, r * 0.78);
-  ctx.lineTo(-r * 0.62, 0);
-  ctx.lineTo(-r * 0.95, -r * 0.78);
-  ctx.lineTo(-r * 0.35, -r * 0.34);
-  ctx.closePath();
-  ctx.fill();
-  ctx.fillStyle = '#fff1e6';
-  ctx.beginPath();
-  ctx.arc(r * 0.42, 0, r * 0.2, 0, TAU);
-  ctx.fill();
-}
-
-function drawBrute(ctx, enemy) {
-  const r = enemy.radius;
-  ctx.rotate(enemy.wobble * 0.15);
-  // Short spikes at the vertices before the shell, so the silhouette bites.
-  ctx.fillStyle = '#8a2be2';
-  ctx.beginPath();
-  for (let i = 0; i < 6; i++) {
-    const angle = (i / 6) * TAU + Math.PI / 6;
-    const bx = Math.cos(angle) * r * 0.92;
-    const by = Math.sin(angle) * r * 0.92;
-    const tx = Math.cos(angle) * r * 1.18;
-    const ty = Math.sin(angle) * r * 1.18;
-    const px = Math.cos(angle + 0.22) * r * 0.92;
-    const py = Math.sin(angle + 0.22) * r * 0.92;
-    ctx.moveTo(bx, by);
-    ctx.lineTo(tx, ty);
-    ctx.lineTo(px, py);
-  }
-  ctx.fill();
-  const shell = ctx.createRadialGradient(-r * 0.3, -r * 0.3, r * 0.2, 0, 0, r * 1.05);
-  shell.addColorStop(0, '#d98cff');
-  shell.addColorStop(0.5, COLORS.enemyBrute);
-  shell.addColorStop(1, '#5e1490');
-  ctx.fillStyle = shell;
-  ctx.beginPath();
-  for (let i = 0; i < 6; i++) {
-    const angle = (i / 6) * TAU;
-    const px = Math.cos(angle) * r;
-    const py = Math.sin(angle) * r;
-    if (i === 0) ctx.moveTo(px, py); else ctx.lineTo(px, py);
-  }
-  ctx.closePath();
-  ctx.fill();
-  // A carved inner hexagon and a heart of dark glass with a burning core.
-  ctx.strokeStyle = 'rgba(243, 213, 255, 0.5)';
-  ctx.lineWidth = 1.6;
-  ctx.beginPath();
-  for (let i = 0; i < 6; i++) {
-    const angle = (i / 6) * TAU;
-    const px = Math.cos(angle) * r * 0.68;
-    const py = Math.sin(angle) * r * 0.68;
-    if (i === 0) ctx.moveTo(px, py); else ctx.lineTo(px, py);
-  }
-  ctx.closePath();
-  ctx.stroke();
-  ctx.fillStyle = '#2a0a3d';
-  ctx.beginPath();
-  ctx.arc(0, 0, r * 0.5, 0, TAU);
-  ctx.fill();
-  const corePulse = 0.75 + 0.25 * Math.sin(enemy.wobble * 2.2);
-  ctx.fillStyle = '#f3d5ff';
-  ctx.beginPath();
-  ctx.arc(0, 0, r * 0.24 * corePulse + r * 0.05, 0, TAU);
-  ctx.fill();
-}
-
-function drawSpitter(ctx, game, enemy) {
-  const r = enemy.radius;
-  // The core's gaze tracks the warden.
   const look = Math.atan2(game.player.y - enemy.y, game.player.x - enemy.x);
-  const ring = ctx.createLinearGradient(-r, -r, r, r);
-  ring.addColorStop(0, '#ff8ae2');
-  ring.addColorStop(0.5, COLORS.enemySpitter);
-  ring.addColorStop(1, '#a1127c');
-  ctx.strokeStyle = ring;
-  ctx.lineWidth = 4.5;
-  ctx.beginPath();
-  ctx.arc(0, 0, r * 0.85, 0, TAU);
-  ctx.stroke();
-  ctx.strokeStyle = 'rgba(255, 224, 247, 0.4)';
-  ctx.lineWidth = 1.4;
-  ctx.setLineDash([7, 9]);
-  ctx.lineDashOffset = -enemy.wobble * 9;
-  ctx.beginPath();
-  ctx.arc(0, 0, r * 0.62, 0, TAU);
-  ctx.stroke();
-  ctx.setLineDash([]);
-  // Three satellite orbs ride the outer ring.
-  const orbit = enemy.wobble * 1.4;
-  ctx.fillStyle = COLORS.enemySpitter;
-  for (let i = 0; i < 3; i++) {
-    const a = orbit + (i / 3) * TAU;
-    ctx.beginPath();
-    ctx.arc(Math.cos(a) * r * 0.85, Math.sin(a) * r * 0.85, 3.2, 0, TAU);
-    ctx.fill();
-  }
-  const core = ctx.createRadialGradient(0, 0, 0.5, 0, 0, r * 0.44);
-  core.addColorStop(0, '#ffd7f4');
-  core.addColorStop(0.45, COLORS.enemySpitter);
-  core.addColorStop(1, '#7c0d5c');
-  ctx.fillStyle = core;
-  ctx.beginPath();
-  ctx.arc(0, 0, r * 0.42, 0, TAU);
-  ctx.fill();
+  const px = Math.cos(look) * r * 0.13;
+  const py = Math.sin(look) * r * 0.13;
   ctx.fillStyle = '#2b021e';
   ctx.beginPath();
-  ctx.arc(Math.cos(look) * r * 0.14, Math.sin(look) * r * 0.14, r * 0.15, 0, TAU);
+  ctx.arc(px, py, r * 0.17, 0, TAU);
+  ctx.fill();
+  ctx.fillStyle = 'rgba(255, 255, 255, 0.85)';
+  ctx.beginPath();
+  ctx.arc(px - r * 0.05, py - r * 0.05, r * 0.05, 0, TAU);
   ctx.fill();
 }
 
+// The Hollow King: layered auras and his turning rune ring stay live, but the King
+// himself is the baked sprite — crown, skull, ribcage and robe — bobbing slowly
+// and swaying as he comes. Live swirl arcs still turn inside his dark heart.
 function drawBoss(ctx, game, enemy) {
   const r = enemy.radius;
-  const pulse = 1 + Math.sin(game.time * 2.2) * 0.045;
-  // The King darkens the air around him: layered auras, rose over violet. (Local
-  // coordinates — drawEnemy has already translated the context to the boss.)
-  drawGlow(ctx, 0, 0, r * 3.4, '#5c1440', 0.30);
-  drawGlow(ctx, 0, 0, r * 2.4, COLORS.boss, 0.34);
-  ctx.save();
-  // The King is drawn larger than his collision body — he should loom, not fit.
-  ctx.scale(pulse * 1.24, pulse * 1.24);
+  drawGlow(ctx, 0, 0, r * 2.9, '#5c1440', 0.30);
+  drawGlow(ctx, 0, 0, r * 2.0, COLORS.boss, 0.34);
 
   // A turning ring of runes and ember-shards at his court's edge.
   ctx.save();
@@ -645,86 +492,30 @@ function drawBoss(ctx, game, enemy) {
   }
   ctx.restore();
 
-  // The crown: seven tall spikes with gemmed tips over a band.
-  const crown = ctx.createLinearGradient(0, -r * 1.5, 0, -r * 0.6);
-  crown.addColorStop(0, '#fff3c4');
-  crown.addColorStop(0.5, COLORS.bossCrown);
-  crown.addColorStop(1, '#c78d1d');
-  ctx.fillStyle = crown;
-  ctx.beginPath();
-  for (let i = 0; i < 7; i++) {
-    const angle = -Math.PI * 0.88 + (i / 6) * Math.PI * 0.76;
-    const spread = 0.13;
-    ctx.moveTo(Math.cos(angle - spread) * r * 0.78, Math.sin(angle - spread) * r * 0.78);
-    ctx.lineTo(Math.cos(angle) * r * 1.46, Math.sin(angle) * r * 1.46);
-    ctx.lineTo(Math.cos(angle + spread) * r * 0.78, Math.sin(angle + spread) * r * 0.78);
-  }
-  ctx.fill();
-  const gems = ['#ff5d8f', '#2ee6c8', '#ff5d8f', '#9be7ff', '#ff5d8f', '#2ee6c8', '#ff5d8f'];
-  for (let i = 0; i < 7; i++) {
-    const angle = -Math.PI * 0.88 + (i / 6) * Math.PI * 0.76;
-    ctx.fillStyle = gems[i];
-    ctx.beginPath();
-    ctx.arc(Math.cos(angle) * r * 1.46, Math.sin(angle) * r * 1.46, 3.6, 0, TAU);
-    ctx.fill();
-  }
+  // The King himself, drawn larger than his collision body — he should loom.
+  const sprites = getSprites();
+  const set = sprites.boss;
+  const frame = Math.floor(game.time * 1.1) % 2;
+  const scale = r * 1.32;
+  ctx.save();
+  ctx.translate(0, Math.sin(game.time * 1.6) * 4);
+  ctx.rotate(Math.sin(game.time * 0.9) * 0.02);
+  blit(ctx, set, frame, scale);
+  if (enemy.flash > 0) blitFlash(ctx, set, frame, scale, (enemy.flash / 0.09) * 0.8);
+  ctx.restore();
 
-  // The body: a burning gradient globe with a dark, swirling heart. (No shadowBlur —
-  // the layered aura sprites above already bloom him, and blur is the dearest paint
-  // a software rasteriser sells.)
-  const bodyGrad = ctx.createRadialGradient(-r * 0.3, -r * 0.35, r * 0.15, 0, 0, r * 1.05);
-  bodyGrad.addColorStop(0, '#ff8fab');
-  bodyGrad.addColorStop(0.45, COLORS.boss);
-  bodyGrad.addColorStop(1, '#6e0c2a');
-  ctx.fillStyle = bodyGrad;
-  ctx.beginPath();
-  ctx.arc(0, 0, r, 0, TAU);
-  ctx.fill();
-  ctx.fillStyle = '#38040f';
-  ctx.beginPath();
-  ctx.arc(0, 0, r * 0.62, 0, TAU);
-  ctx.fill();
-  // Swirl arcs turning inside the dark.
-  ctx.strokeStyle = 'rgba(255, 93, 143, 0.55)';
-  ctx.lineWidth = 3;
+  // Swirl arcs turning inside the dark of his heart.
+  const hx = HOLLOW_HEART.x * scale;
+  const hy = HOLLOW_HEART.y * scale + Math.sin(game.time * 1.6) * 4;
+  ctx.strokeStyle = 'rgba(255, 93, 143, 0.6)';
+  ctx.lineWidth = 2.5;
   for (let i = 0; i < 3; i++) {
     const start = game.time * 0.9 + (i / 3) * TAU;
     ctx.beginPath();
-    ctx.arc(0, 0, r * (0.34 + i * 0.13), start, start + Math.PI * 0.8);
+    ctx.arc(hx, hy, scale * (0.13 + i * 0.055), start, start + Math.PI * 0.8);
     ctx.stroke();
   }
-  // Three eyes: two gold, and the pale third that never blinks.
-  ctx.fillStyle = '#ffd97a';
-  for (const side of [-1, 1]) {
-    ctx.beginPath();
-    ctx.arc(side * r * 0.3, -r * 0.16, r * 0.145, 0, TAU);
-    ctx.fill();
-    ctx.fillStyle = '#38040f';
-    ctx.beginPath();
-    ctx.arc(side * r * 0.3, -r * 0.16, r * 0.062, 0, TAU);
-    ctx.fill();
-    ctx.fillStyle = '#ffd97a';
-  }
-  drawGlow(ctx, 0, r * 0.04, r * 0.55, '#ffe9b0', 0.55);
-  ctx.fillStyle = '#ffe9b0';
-  ctx.beginPath();
-  ctx.arc(0, r * 0.0, r * 0.16, 0, TAU);
-  ctx.fill();
-  // A jagged ember mouth.
-  ctx.fillStyle = '#ff7a4d';
-  ctx.beginPath();
-  const mw = r * 0.5;
-  const my = r * 0.34;
-  ctx.moveTo(-mw, my);
-  for (let i = 0; i <= 6; i++) {
-    const x = -mw + (i / 6) * mw * 2;
-    ctx.lineTo(x, my + (i % 2 === 0 ? 0 : r * 0.1));
-  }
-  ctx.lineTo(mw, my + r * 0.13);
-  ctx.lineTo(-mw, my + r * 0.13);
-  ctx.closePath();
-  ctx.fill();
-  ctx.restore();
+  drawGlow(ctx, hx, hy, scale * 0.5, '#ffe9b0', 0.35);
 }
 
 function drawOrbitOrbs(ctx, game) {
@@ -804,31 +595,18 @@ function drawPlayer(ctx, game) {
   if (player.iframes > 0 && game.state === 'playing' && Math.floor(game.time * 14) % 2 === 0) {
     ctx.globalAlpha = 0.35;
   }
+  // The warden himself: the baked hooded figure, turned toward his stride, his
+  // cloak swaying a breath behind the turn. Two frames trade as he moves.
+  const sprites = getSprites();
+  const moving = player.trail && player.trail.length > 0;
+  const frame = moving ? Math.floor(game.time * 8) % 2 : 0;
+  const sway = Math.sin(game.time * (moving ? 6.4 : 2.2)) * (moving ? 0.06 : 0.03);
   ctx.save();
   ctx.translate(player.x, player.y);
-  const bodyGrad = ctx.createRadialGradient(-player.radius * 0.3, -player.radius * 0.35, 2, 0, 0, player.radius * 1.1);
-  bodyGrad.addColorStop(0, '#fff3c4');
-  bodyGrad.addColorStop(0.45, COLORS.player);
-  bodyGrad.addColorStop(1, '#d97c06');
-  ctx.fillStyle = bodyGrad;
-  ctx.beginPath();
-  ctx.arc(0, 0, player.radius, 0, TAU);
-  ctx.fill();
-  ctx.strokeStyle = 'rgba(255, 243, 196, 0.8)';
-  ctx.lineWidth = 1.4;
-  ctx.stroke();
-  // The warden's rotating four-point star.
-  ctx.rotate(game.time * 1.8);
-  ctx.fillStyle = COLORS.playerCore;
-  const r = player.radius * 0.72;
-  ctx.beginPath();
-  ctx.moveTo(0, -r);
-  ctx.quadraticCurveTo(0, 0, r, 0);
-  ctx.quadraticCurveTo(0, 0, 0, r);
-  ctx.quadraticCurveTo(0, 0, -r, 0);
-  ctx.quadraticCurveTo(0, 0, 0, -r);
-  ctx.fill();
+  ctx.rotate((player.faceAngle ?? 0) + sway);
+  blit(ctx, sprites.player, frame, player.radius);
   ctx.restore();
+  ctx.globalAlpha = 1;
   // Dash readiness ring.
   if (game.state === 'playing' && player.dashCd <= 0) {
     ctx.strokeStyle = 'rgba(255, 217, 122, 0.45)';
@@ -837,7 +615,6 @@ function drawPlayer(ctx, game) {
     ctx.arc(player.x, player.y, player.radius + 5 + Math.sin(game.time * 4) * 1.2, 0, TAU);
     ctx.stroke();
   }
-  ctx.globalAlpha = 1;
 }
 
 function drawParticles(ctx, game) {

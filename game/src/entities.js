@@ -6,6 +6,8 @@ import { COLORS, ENEMIES, PLAYER, enemyHpScale } from './config.js';
 import { moveVector, isDown } from './input.js';
 import { spawnBurst, spawnTrailPuff, spawnFloatText, spawnFlash, spawnRing, addShake } from './particles.js';
 import { sfxDash, sfxHurt, sfxPickup } from './audio.js';
+import { hasRelic } from './relics.js';
+import { registerKill } from './score.js';
 
 const TAU = Math.PI * 2;
 
@@ -26,7 +28,7 @@ export function makePlayer(x, y) {
     x, y, vx: 0, vy: 0,
     radius: PLAYER.radius,
     hp: PLAYER.baseHp, maxHp: PLAYER.baseHp,
-    faceX: 1, faceY: 0,
+    faceX: 1, faceY: 0, faceAngle: 0,
     dashT: 0, dashCd: 0, dashDirX: 1, dashDirY: 0,
     iframes: 0,
     alive: true,
@@ -50,6 +52,8 @@ export function spawnEnemy(game, kind, x, y, { elite = false } = {}) {
     fireCd: rand(0.6, base.fireEvery ?? 2),
     burstT: 2.2, summonT: 5,
     wobble: Math.random() * TAU,
+    burnT: 0, burnAcc: 0, burnTick: 0,
+    framePhase: Math.random() * 10,
     dead: false,
   };
   game.enemies.push(enemy);
@@ -89,22 +93,45 @@ function releaseBolt(bolt) {
 
 export function damageEnemy(game, enemy, amount, knockX = 0, knockY = 0) {
   if (enemy.dead) return false;
+  // The Executioner's Lens finds the soft place: one hit in seven lands double,
+  // and says so in gilded type a size up from a merely heavy blow.
+  let crit = false;
+  if (hasRelic(game, 'executioner') && Math.random() < 0.15) {
+    amount *= 2;
+    crit = true;
+  }
   enemy.hp -= amount;
   enemy.flash = 0.09;
   enemy.kx += knockX;
   enemy.ky += knockY;
+  // The Ember Brand sets what it touches alight: three seconds of burning, fed by
+  // the strength of the hit that lit it.
+  if (hasRelic(game, 'emberbrand')) {
+    enemy.burnT = 3;
+    enemy.burnAcc = Math.min(14, 5 + amount * 0.3);
+  }
   // Heavy hits shout: bigger, gilded numbers for the blows that matter.
-  const big = amount >= 30;
+  const big = crit || amount >= 30;
   const mid = amount >= 18;
   spawnFloatText(
     game, enemy.x + rand(-6, 6), enemy.y - enemy.radius - 4,
-    String(Math.round(amount)),
+    crit ? `${Math.round(amount)}!` : String(Math.round(amount)),
     big ? COLORS.bossCrown : COLORS.text,
-    big ? 18 : mid ? 15 : 13,
+    crit ? 20 : big ? 18 : mid ? 15 : 13,
   );
   if (enemy.hp > 0) return false;
+  return killEnemy(game, enemy);
+}
+
+// Death itself, split from the blow that caused it so the Ember Brand's burn can
+// finish a foe without pretending a weapon struck it.
+export function killEnemy(game, enemy) {
+  if (enemy.dead) return false;
   enemy.dead = true;
   game.kills++;
+  registerKill(game, enemy);
+  // An elite's death opens the court's hoard: main.js drafts a relic from it.
+  if (enemy.elite) game.pendingRelicDrafts = (game.pendingRelicDrafts ?? 0) + 1;
   const burstColor = enemy.elite ? COLORS.shardLarge : COLORS[ENEMIES[enemy.kind].color];
   spawnBurst(game, enemy.x, enemy.y, burstColor, enemy.elite ? 26 : 12, enemy.elite ? 260 : 180);
   // Shards: the enemy's XP value, split so big kills scatter a satisfying little pile.
@@ -125,6 +152,16 @@ export function damageEnemy(game, enemy, amount, knockX = 0, knockY = 0) {
 export function hurtPlayer(game, amount) {
   const player = game.player;
   if (!player.alive || player.iframes > 0 || player.dashT > 0) return false;
+  // The Aegis Shard eats one blow whole, then needs twelve seconds to re-form.
+  // It only spends itself on a hit that would truly have landed.
+  if (hasRelic(game, 'aegisshard') && game.relics.aegisCd <= 0) {
+    game.relics.aegisCd = 12;
+    player.iframes = 0.35;
+    spawnRing(game, player.x, player.y, COLORS.spark, 54, 3);
+    spawnFlash(game, player.x, player.y, COLORS.spark, 40, 0.18);
+    spawnFloatText(game, player.x, player.y - player.radius - 12, 'Warded!', COLORS.spark, 14);
+    return false;
+  }
   player.hp -= amount;
   player.iframes = PLAYER.hurtIframes;
   addShake(game, 7);
@@ -146,6 +183,12 @@ export function updatePlayer(game, dt) {
   if (move.x !== 0 || move.y !== 0) {
     player.faceX = move.x;
     player.faceY = move.y;
+    // The warden turns toward his stride, easing around rather than snapping.
+    const want = Math.atan2(move.y, move.x);
+    let diff = want - player.faceAngle;
+    while (diff > Math.PI) diff -= TAU;
+    while (diff < -Math.PI) diff += TAU;
+    player.faceAngle += diff * Math.min(1, dt * 14);
   }
 
   player.dashCd = Math.max(0, player.dashCd - dt);
@@ -162,6 +205,21 @@ export function updatePlayer(game, dt) {
     player.dashCd = PLAYER.dashCooldown * game.passives.dashCdMul;
     sfxDash();
     spawnBurst(game, player.x, player.y, COLORS.player, 8, 120);
+    // The Dash Nova turns the escape into a weapon: a ring of light at the
+    // dash's origin that throws back everything standing in it.
+    if (hasRelic(game, 'dashnova')) {
+      spawnRing(game, player.x, player.y, COLORS.nova, 96, 4);
+      spawnFlash(game, player.x, player.y, COLORS.nova, 52, 0.2);
+      for (const enemy of [...game.enemies]) {
+        if (enemy.dead) continue;
+        const dx = enemy.x - player.x;
+        const dy = enemy.y - player.y;
+        const d = Math.hypot(dx, dy);
+        if (d < 96 + enemy.radius) {
+          damageEnemy(game, enemy, 20 * game.passives.damageMul, (dx / (d || 1)) * 240, (dy / (d || 1)) * 240);
+        }
+      }
+    }
   }
 
   const speed = PLAYER.baseSpeed * game.passives.speedMul;
@@ -240,11 +298,34 @@ export function updateEnemies(game, dt) {
   const player = game.player;
   const enemies = game.enemies;
 
+  const frostAura = hasRelic(game, 'frostaura');
+  const thornMantle = hasRelic(game, 'thornmantle');
+
   for (const enemy of enemies) {
     if (enemy.dead) continue;
     enemy.flash = Math.max(0, enemy.flash - dt);
     enemy.touchCd = Math.max(0, enemy.touchCd - dt);
     enemy.wobble += dt * 3;
+
+    // The Ember Brand's burn ticks quietly — no float text, just embers and a
+    // shrinking foe. It can finish a kill, and the kill counts like any other.
+    if (enemy.burnT > 0) {
+      enemy.burnT -= dt;
+      enemy.burnTick += enemy.burnAcc * dt;
+      if (Math.random() < dt * 7) {
+        spawnBurst(game, enemy.x + rand(-6, 6), enemy.y + rand(-6, 6), '#ff7a4d', 1, 40);
+      }
+      const whole = Math.floor(enemy.burnTick);
+      if (whole >= 1) {
+        enemy.burnTick -= whole;
+        enemy.hp -= whole;
+        enemy.flash = Math.max(enemy.flash, 0.05);
+        if (enemy.hp <= 0) {
+          killEnemy(game, enemy);
+          continue;
+        }
+      }
+    }
 
     const dx = player.x - enemy.x;
     const dy = player.y - enemy.y;
@@ -288,17 +369,21 @@ export function updateEnemies(game, dt) {
       }
     }
 
-    enemy.x += (enemy.vx + enemy.kx) * dt;
-    enemy.y += (enemy.vy + enemy.ky) * dt;
+    // The Frost Aura drags at anything that closes on the warden.
+    const slowMul = frostAura && d < 140 ? 0.62 : 1;
+    enemy.x += (enemy.vx * slowMul + enemy.kx) * dt;
+    enemy.y += (enemy.vy * slowMul + enemy.ky) * dt;
     enemy.kx *= Math.pow(0.0015, dt);
     enemy.ky *= Math.pow(0.0015, dt);
     clampToArena(game, enemy);
 
     // Contact damage, rate-limited per enemy so standing in a swarm hurts steadily,
-    // not all at once.
+    // not all at once. The Thorn Mantle answers every touch, warded or not — a foe
+    // that lays a claw on the warden bleeds for it on the same drumbeat.
     if (player.alive && enemy.touchCd <= 0 && d < enemy.radius + player.radius + 2) {
       hurtPlayer(game, enemy.damage);
       enemy.touchCd = 0.55;
+      if (thornMantle && !enemy.dead) damageEnemy(game, enemy, 10);
     }
   }
 

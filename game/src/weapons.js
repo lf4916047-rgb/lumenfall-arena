@@ -6,6 +6,7 @@ import { COLORS, WEAPONS, WEAPON_MAX_LEVEL } from './config.js';
 import { fireBolt, nearestEnemy, damageEnemy } from './entities.js';
 import { spawnRing, spawnZap, spawnBurst, spawnFlash } from './particles.js';
 import { sfxShoot, sfxNova, sfxZap } from './audio.js';
+import { hasRelic } from './relics.js';
 
 export function makeLoadout() {
   return {
@@ -21,6 +22,9 @@ export function makeLoadout() {
       magnetMul: 1,
       dashCdMul: 1,
     },
+    // How many times each passive blessing has been taken — the loadout panel
+    // reads this, and it is the only place the count survives.
+    passiveCounts: {},
     orbitOrbs: [],
   };
 }
@@ -132,10 +136,12 @@ function updateChainSpark(game, dt, weapon, player) {
     return;
   }
   weapon.timer = cfg.interval[li];
+  // The Storm Conductor stretches the arc: one more leap for the lightning.
+  const chainCount = cfg.chains[li] + (hasRelic(game, 'stormconductor') ? 1 : 0);
   const points = [{ x: player.x, y: player.y }];
   const visited = new Set();
   let falloff = 1;
-  for (let hop = 0; hop < cfg.chains[li] && current; hop++) {
+  for (let hop = 0; hop < chainCount && current; hop++) {
     visited.add(current);
     // A jagged midpoint makes the bolt read as lightning rather than a laser.
     points.push({
@@ -172,6 +178,9 @@ const PASSIVES = [
   { key: 'dashflow', name: 'Phase Ribbon', desc: 'Dash recharges 15% faster.', apply: (g) => { g.passives.dashCdMul *= 0.85; } },
 ];
 
+// The loadout panel lists blessings by name; it reads the same table.
+export const PASSIVE_DEFS = PASSIVES;
+
 // Draw up to three distinct choices: unmaxed weapons first (new ones and upgrades),
 // padded with passives, shuffled so position carries no meaning.
 export function buildChoices(game) {
@@ -192,7 +201,10 @@ export function buildChoices(game) {
     pool.push({
       kind: 'passive', key: passive.key,
       title: passive.name, tag: 'PASSIVE', desc: passive.desc,
-      apply: passive.apply,
+      apply: (g) => {
+        passive.apply(g);
+        g.weapons.passiveCounts[passive.key] = (g.weapons.passiveCounts[passive.key] ?? 0) + 1;
+      },
     });
   }
   // Shuffle, then prefer a mix: guarantee at least one weapon when one is available.

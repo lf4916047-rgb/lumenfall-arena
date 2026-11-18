@@ -13,6 +13,8 @@ import { makeLoadout, updateWeapons, buildChoices } from './weapons.js';
 import { makeDirector, updateDirector } from './director.js';
 import { initEffects, updateEffects, spawnTrailPuff } from './particles.js';
 import { initBackground, renderGame } from './render.js';
+import { makeScore, updateScore, settleScore } from './score.js';
+import { makeRelicState, buildRelicChoices, updateRelics } from './relics.js';
 import {
   buildUI, showScreen, updateHUD, showLevelUp, pickLevelUpChoice,
   showEnd, showBanner, hideBanner, setMutedIcon,
@@ -45,6 +47,11 @@ const game = {
   bossDefeated: false,
   bossWarning: 0,
   bannerShown: false,
+  score: null,
+  relics: null,
+  pendingRelicDrafts: 0,
+  phaseIdx: 0,
+  phaseBannerT: 0,
   shake: 0,
   particles: [],
   texts: [],
@@ -89,6 +96,11 @@ function resetGame() {
   game.bossDefeated = false;
   game.bossWarning = 0;
   game.bannerShown = false;
+  game.score = makeScore();
+  game.relics = makeRelicState();
+  game.pendingRelicDrafts = 0;
+  game.phaseIdx = 0;
+  game.phaseBannerT = 0;
   initEffects(game);
 }
 
@@ -126,6 +138,7 @@ function endRun(victory) {
   game.bossWarning = 0;
   game.bannerShown = false;
   hideBanner(ui);
+  settleScore(game);
   if (victory) audio.sfxVictory();
   else audio.sfxDefeat();
   showEnd(ui, victory, game);
@@ -134,7 +147,7 @@ function endRun(victory) {
 
 // XP in, levels out: crossing a threshold pauses the run for an upgrade choice.
 function gainXp(amount) {
-  game.xp += amount;
+  game.xp += amount * (game.relics ? game.relics.xpMul : 1);
   while (game.xp >= game.xpNext) {
     game.xp -= game.xpNext;
     game.level++;
@@ -161,6 +174,35 @@ function openLevelUp() {
   showScreen(ui, 'levelup');
 }
 
+// An elite's fall opens the court's hoard: the run pauses into a draft of three
+// relics, on the same card machinery as the level-up blessings.
+function openRelicDraft() {
+  const choices = buildRelicChoices(game);
+  if (choices.length === 0) {
+    // The whole hoard is already carried; the draft simply never opens.
+    game.pendingRelicDrafts = 0;
+    if (game.state === 'relicdraft') {
+      game.state = 'playing';
+      showScreen(ui, 'none');
+    }
+    return;
+  }
+  game.state = 'relicdraft';
+  audio.sfxLevelUp();
+  showLevelUp(ui, choices, (choice) => {
+    choice.apply(game);
+    audio.sfxUiClick();
+    game.pendingRelicDrafts--;
+    if (game.pendingRelicDrafts > 0) {
+      openRelicDraft();
+    } else {
+      game.state = 'playing';
+      showScreen(ui, 'none');
+    }
+  }, { heading: '👑 A RELIC OF THE COURT 👑', sub: 'An elite has fallen — claim one treasure' });
+  showScreen(ui, 'levelup');
+}
+
 function handleKeys() {
   if (wasPressed('KeyM')) toggleMute();
 
@@ -168,12 +210,21 @@ function handleKeys() {
   else if ((game.state === 'victory' || game.state === 'gameover') && anyPressed(['Enter', 'KeyR'])) startRun();
   else if (game.state === 'playing' && anyPressed(['KeyP', 'Escape'])) pauseGame();
   else if (game.state === 'paused' && anyPressed(['KeyP', 'Escape', 'Enter'])) resumeGame();
-  else if (game.state === 'levelup') {
+  else if (game.state === 'levelup' || game.state === 'relicdraft') {
     if (wasPressed('Digit1')) pickLevelUpChoice(ui, 0);
     else if (wasPressed('Digit2')) pickLevelUpChoice(ui, 1);
     else if (wasPressed('Digit3')) pickLevelUpChoice(ui, 2);
   }
 }
+
+// The run's named movements, announced as the dark gathers. The last heralds the
+// King and clears the stage six seconds before his own warning sting.
+const PHASES = [
+  { at: 45, title: 'THE SWARM STIRS', sub: 'They have scented the last light.' },
+  { at: 105, title: 'THE DARK DEEPENS', sub: 'Wings in the rafters, eyes in the walls.' },
+  { at: 165, title: 'THE COURT AWAKENS', sub: 'The Hollow King\'s servants take the field.' },
+  { at: 225, title: 'THE KING\'S HERALD', sub: 'A crown of embers on the horizon. He is coming.' },
+];
 
 function updatePlaying(dt) {
   game.elapsed += dt;
@@ -185,6 +236,21 @@ function updatePlaying(dt) {
   const gained = updateShards(game, dt);
   if (gained > 0) gainXp(gained);
   updateEffects(game, dt);
+  updateScore(game, dt);
+  updateRelics(game, dt);
+
+  // Phase banners, on the same heraldry as the boss warning but never over it.
+  while (game.phaseIdx < PHASES.length && game.elapsed >= PHASES[game.phaseIdx].at) {
+    const phase = PHASES[game.phaseIdx++];
+    if (game.bossWarning <= 0 && game.phaseBannerT <= 0 && game.state === 'playing') {
+      showBanner(ui, phase.title, phase.sub);
+      game.phaseBannerT = 2.6;
+    }
+  }
+  if (game.phaseBannerT > 0) {
+    game.phaseBannerT -= dt;
+    if (game.phaseBannerT <= 0 && game.bossWarning <= 0) hideBanner(ui);
+  }
 
   // The boss herald banner lives for the warning's duration.
   if (game.bossWarning > 0) {
@@ -198,6 +264,12 @@ function updatePlaying(dt) {
 
   if (!game.player.alive) endRun(false);
   else if (game.bossDefeated && game.elapsed >= RUN_DURATION) endRun(true);
+
+  // An elite fell this frame and the run still stands: open the relic draft.
+  // (A pending level-up wins the pause; the draft follows it next frame.)
+  if (game.state === 'playing' && game.pendingRelicDrafts > 0 && game.pendingLevels === 0) {
+    openRelicDraft();
+  }
 }
 
 function updateTitle(dt) {
@@ -234,7 +306,7 @@ function resize() {
     w: canvas.width - 48,
     h: canvas.height - 106,
   };
-  initBackground(canvas.width, canvas.height);
+  initBackground(canvas.width, canvas.height, game.arena);
   if (game.player) {
     game.player.x = Math.min(game.arena.x + game.arena.w - 20, Math.max(game.arena.x + 20, game.player.x));
     game.player.y = Math.min(game.arena.y + game.arena.h - 20, Math.max(game.arena.y + 20, game.player.y));
