@@ -65,17 +65,20 @@ export const ENEMIES = {
   boss:   { hp: 1500, speed: 33, radius: 46, damage: 20, xp: 25, unlock: BOSS_TIME, color: 'boss' },
 };
 
-// Enemy health grows as the run deepens so early builds must keep scaling.
+// Enemy health grows as the run deepens — but on a gentler curve than the warden's
+// own growth, so a build that keeps pace starts clearing screens by the third
+// minute and melts the King, while the opening minute stays honest.
 export function enemyHpScale(elapsed) {
-  return 1 + (elapsed / 60) * 0.55;
+  const m = elapsed / 60;
+  return 1 + m * 0.38 + m * m * 0.02;
 }
 
 // Director pacing: the spawn interval shrinks and the alive cap grows across the run.
 export function spawnInterval(elapsed) {
-  return Math.max(0.42, 1.55 - elapsed * 0.0038);
+  return Math.max(0.34, 1.5 - elapsed * 0.0042);
 }
 export function aliveCap(elapsed) {
-  return Math.min(90, 26 + Math.floor(elapsed * 0.24));
+  return Math.min(110, 26 + Math.floor(elapsed * 0.30));
 }
 export const ELITE_EVERY = 25;
 export const ELITE_FIRST = 50;
@@ -87,34 +90,34 @@ export const WEAPONS = {
   starbolts: {
     name: 'Star Bolts',
     desc: 'Seeking bolts of starlight that hunt the nearest foe.',
-    interval: [0.42, 0.38, 0.34, 0.30, 0.26],
+    interval: [0.40, 0.36, 0.32, 0.28, 0.24],
     count:    [1, 2, 2, 3, 4],
-    damage:   [9, 11, 14, 17, 22],
+    damage:   [10, 15, 22, 32, 46],
     speed: 540,
     steer: 7.5,
   },
   orbitblades: {
     name: 'Orbit Blades',
     desc: 'Blades of hard light circle you, shredding what they touch.',
-    count:    [2, 3, 3, 4, 5],
-    damage:   [8, 11, 14, 18, 24],
-    radius:   [66, 70, 76, 82, 90],
+    count:    [2, 3, 4, 5, 6],
+    damage:   [10, 15, 22, 32, 46],
+    radius:   [66, 72, 78, 86, 96],
     spin: 2.6,
-    hitEvery: 0.34,
+    hitEvery: 0.32,
   },
   novapulse: {
     name: 'Nova Pulse',
     desc: 'A periodic nova bursts outward, blasting everything close.',
-    interval: [3.4, 3.1, 2.8, 2.5, 2.2],
-    damage:   [16, 22, 29, 38, 50],
-    radius:   [118, 132, 148, 164, 184],
+    interval: [3.2, 2.9, 2.6, 2.3, 2.0],
+    damage:   [22, 34, 50, 72, 105],
+    radius:   [120, 136, 154, 172, 196],
   },
   chainspark: {
     name: 'Chain Spark',
     desc: 'Lightning leaps from foe to foe in a crackling chain.',
-    interval: [1.5, 1.35, 1.2, 1.05, 0.9],
-    damage:   [12, 16, 21, 27, 35],
-    chains:   [2, 3, 4, 5, 6],
+    interval: [1.4, 1.25, 1.1, 0.95, 0.8],
+    damage:   [16, 24, 35, 50, 72],
+    chains:   [3, 4, 5, 6, 7],
     range: 300,
     linkRange: 150,
   },

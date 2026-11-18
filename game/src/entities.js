@@ -6,7 +6,7 @@ import { COLORS, ENEMIES, PLAYER, enemyHpScale } from './config.js';
 import { moveVector, isDown } from './input.js';
 import { spawnBurst, spawnTrailPuff, spawnFloatText, spawnFlash, spawnRing, addShake } from './particles.js';
 import { sfxDash, sfxHurt, sfxPickup } from './audio.js';
-import { hasRelic } from './relics.js';
+import { hasRelic, queueMeteor } from './relics.js';
 import { registerKill } from './score.js';
 
 const TAU = Math.PI * 2;
@@ -91,33 +91,41 @@ function releaseBolt(bolt) {
 
 // --- Damage ------------------------------------------------------------------
 
-export function damageEnemy(game, enemy, amount, knockX = 0, knockY = 0) {
+export function damageEnemy(game, enemy, amount, knockX = 0, knockY = 0, critBonus = 0) {
   if (enemy.dead) return false;
-  // The Executioner's Lens finds the soft place: one hit in seven lands double,
-  // and says so in gilded type a size up from a merely heavy blow.
+  // Critical hits are a run-wide system now: the warden's base chance (workshop
+  // Deadeye, the Killer Instinct blessing) plus any bonus the striking weapon
+  // carries — and the Executioner's Lens stacks its own chance on top and
+  // deepens every crit to 2.5×. A crit under the Skyfall Brand calls a meteor.
   let crit = false;
-  if (hasRelic(game, 'executioner') && Math.random() < 0.15) {
-    amount *= 2;
+  const lens = hasRelic(game, 'executioner');
+  const critChance = (game.crit ? game.crit.chance : 0) + critBonus + (lens ? 0.15 : 0);
+  if (Math.random() < critChance) {
+    amount *= lens ? 2.5 : (game.crit ? game.crit.mul : 2);
     crit = true;
   }
   enemy.hp -= amount;
   enemy.flash = 0.09;
   enemy.kx += knockX;
   enemy.ky += knockY;
+  if (crit && hasRelic(game, 'skyfall') && !game.meteorSuppressed) {
+    queueMeteor(game, enemy.x, enemy.y);
+  }
   // The Ember Brand sets what it touches alight: three seconds of burning, fed by
   // the strength of the hit that lit it.
   if (hasRelic(game, 'emberbrand')) {
     enemy.burnT = 3;
-    enemy.burnAcc = Math.min(14, 5 + amount * 0.3);
+    enemy.burnAcc = Math.min(30, 9 + amount * 0.5);
   }
-  // Heavy hits shout: bigger, gilded numbers for the blows that matter.
-  const big = crit || amount >= 30;
-  const mid = amount >= 18;
+  // Heavy hits shout: bigger, gilded numbers for the blows that matter — and a
+  // crit shouts loudest of all, in gold a full size above a merely heavy blow.
+  const big = crit || amount >= 40;
+  const mid = amount >= 22;
   spawnFloatText(
     game, enemy.x + rand(-6, 6), enemy.y - enemy.radius - 4,
     crit ? `${Math.round(amount)}!` : String(Math.round(amount)),
     big ? COLORS.bossCrown : COLORS.text,
-    crit ? 20 : big ? 18 : mid ? 15 : 13,
+    crit ? 24 : big ? 18 : mid ? 15 : 13,
   );
   if (enemy.hp > 0) return false;
   return killEnemy(game, enemy);
@@ -131,7 +139,11 @@ export function killEnemy(game, enemy) {
   game.kills++;
   registerKill(game, enemy);
   // An elite's death opens the court's hoard: main.js drafts a relic from it.
-  if (enemy.elite) game.pendingRelicDrafts = (game.pendingRelicDrafts ?? 0) + 1;
+  // Elites are also tallied for the run's Stardust wages in meta.js.
+  if (enemy.elite) {
+    game.pendingRelicDrafts = (game.pendingRelicDrafts ?? 0) + 1;
+    game.elitesKilled = (game.elitesKilled ?? 0) + 1;
+  }
   const burstColor = enemy.elite ? COLORS.shardLarge : COLORS[ENEMIES[enemy.kind].color];
   spawnBurst(game, enemy.x, enemy.y, burstColor, enemy.elite ? 26 : 12, enemy.elite ? 260 : 180);
   // Shards: the enemy's XP value, split so big kills scatter a satisfying little pile.
@@ -152,16 +164,18 @@ export function killEnemy(game, enemy) {
 export function hurtPlayer(game, amount) {
   const player = game.player;
   if (!player.alive || player.iframes > 0 || player.dashT > 0) return false;
-  // The Aegis Shard eats one blow whole, then needs twelve seconds to re-form.
+  // The Aegis Shard eats one blow whole, then needs nine seconds to re-form.
   // It only spends itself on a hit that would truly have landed.
   if (hasRelic(game, 'aegisshard') && game.relics.aegisCd <= 0) {
-    game.relics.aegisCd = 12;
+    game.relics.aegisCd = 9;
     player.iframes = 0.35;
     spawnRing(game, player.x, player.y, COLORS.spark, 54, 3);
     spawnFlash(game, player.x, player.y, COLORS.spark, 40, 0.18);
     spawnFloatText(game, player.x, player.y - player.radius - 12, 'Warded!', COLORS.spark, 14);
     return false;
   }
+  // Workshop armour shaves every blow that lands, though never below a scratch.
+  amount = Math.max(1, amount - (game.passives ? game.passives.armor ?? 0 : 0));
   player.hp -= amount;
   player.iframes = PLAYER.hurtIframes;
   addShake(game, 7);
@@ -169,6 +183,18 @@ export function hurtPlayer(game, amount) {
   spawnBurst(game, player.x, player.y, COLORS.hp, 10, 200);
   spawnFlash(game, player.x, player.y, COLORS.hp, 34, 0.16);
   if (player.hp <= 0) {
+    // The Second Dawn (a workshop promise): once per run, death itself is refused.
+    if (game.reviveAvailable && !game.reviveUsed) {
+      game.reviveUsed = true;
+      player.hp = Math.ceil(player.maxHp * 0.5);
+      player.iframes = 2;
+      addShake(game, 10);
+      spawnRing(game, player.x, player.y, COLORS.bossCrown, 190, 6);
+      spawnFlash(game, player.x, player.y, COLORS.bossCrown, 110, 0.4);
+      spawnBurst(game, player.x, player.y, COLORS.bossCrown, 30, 280);
+      spawnFloatText(game, player.x, player.y - player.radius - 16, '✦ SECOND DAWN ✦', COLORS.bossCrown, 19);
+      return true;
+    }
     player.hp = 0;
     player.alive = false;
   }
@@ -208,15 +234,15 @@ export function updatePlayer(game, dt) {
     // The Dash Nova turns the escape into a weapon: a ring of light at the
     // dash's origin that throws back everything standing in it.
     if (hasRelic(game, 'dashnova')) {
-      spawnRing(game, player.x, player.y, COLORS.nova, 96, 4);
-      spawnFlash(game, player.x, player.y, COLORS.nova, 52, 0.2);
+      spawnRing(game, player.x, player.y, COLORS.nova, 110, 4);
+      spawnFlash(game, player.x, player.y, COLORS.nova, 60, 0.2);
       for (const enemy of [...game.enemies]) {
         if (enemy.dead) continue;
         const dx = enemy.x - player.x;
         const dy = enemy.y - player.y;
         const d = Math.hypot(dx, dy);
-        if (d < 96 + enemy.radius) {
-          damageEnemy(game, enemy, 20 * game.passives.damageMul, (dx / (d || 1)) * 240, (dy / (d || 1)) * 240);
+        if (d < 110 + enemy.radius) {
+          damageEnemy(game, enemy, 45 * game.passives.damageMul, (dx / (d || 1)) * 240, (dy / (d || 1)) * 240);
         }
       }
     }
@@ -369,8 +395,8 @@ export function updateEnemies(game, dt) {
       }
     }
 
-    // The Frost Aura drags at anything that closes on the warden.
-    const slowMul = frostAura && d < 140 ? 0.62 : 1;
+    // The Frost Aura drags hard at anything that closes on the warden.
+    const slowMul = frostAura && d < 170 ? 0.55 : 1;
     enemy.x += (enemy.vx * slowMul + enemy.kx) * dt;
     enemy.y += (enemy.vy * slowMul + enemy.ky) * dt;
     enemy.kx *= Math.pow(0.0015, dt);
@@ -383,7 +409,7 @@ export function updateEnemies(game, dt) {
     if (player.alive && enemy.touchCd <= 0 && d < enemy.radius + player.radius + 2) {
       hurtPlayer(game, enemy.damage);
       enemy.touchCd = 0.55;
-      if (thornMantle && !enemy.dead) damageEnemy(game, enemy, 10);
+      if (thornMantle && !enemy.dead) damageEnemy(game, enemy, 25);
     }
   }
 

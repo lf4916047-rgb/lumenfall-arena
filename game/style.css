@@ -22,7 +22,7 @@ html, body {
 #hud {
   position: absolute;
   top: 0; left: 0; right: 0;
-  padding: 10px 18px 0;
+  padding: calc(10px + env(safe-area-inset-top, 0px)) calc(18px + env(safe-area-inset-right, 0px)) 0 calc(18px + env(safe-area-inset-left, 0px));
   opacity: 0;
   pointer-events: none;
   transition: opacity 0.25s;
@@ -73,7 +73,34 @@ html, body {
   z-index: 10;
 }
 #loadout.visible { opacity: 1; }
-@media (max-width: 1100px) { #loadout { display: none; } }
+@media (max-width: 1100px) { body:not(.touch) #loadout { display: none; } }
+
+/* On phones the panel becomes a right-edge strip: slid away until its ⚔ tab is
+   tapped, then it overlays the arena's edge without pausing the fight. */
+#loadout-btn {
+  position: absolute;
+  top: 146px; right: 14px;
+  width: 42px; height: 42px;
+  border-radius: 50%;
+  border: 1px solid #39408f;
+  background: rgba(11, 14, 42, 0.8);
+  color: #ffd97a;
+  font-size: 17px;
+  cursor: pointer;
+  z-index: 15;
+  display: none;
+}
+body.touch #loadout-btn.visible { display: block; }
+body.touch #loadout {
+  left: auto; right: 0;
+  width: 202px;
+  border-radius: 12px 0 0 12px;
+  transform: translate(calc(100% + 6px), -50%);
+  transition: transform 0.25s, opacity 0.25s;
+  pointer-events: auto;
+  z-index: 14;
+}
+body.touch #loadout.open { transform: translate(0, -50%); }
 .loadout-head { font-size: 12px; font-weight: 800; letter-spacing: 0.22em; color: #ffe9b0; margin-bottom: 8px; }
 .loadout-section { font-size: 10px; font-weight: 800; letter-spacing: 0.26em; color: #9aa3e8; margin: 10px 0 5px; }
 .loadout-section.relic-head { color: #d9a6ff; }
@@ -213,8 +240,13 @@ body.touch #pause-btn { display: block; }
   padding: 24px;
   background: rgba(5, 6, 24, 0.55);
   z-index: 20;
+  overflow-y: auto;
 }
 .screen.visible { display: flex; }
+/* Centre the screen's contents when they fit; when they overflow (a short
+   landscape phone), the auto margins give way and the top stays reachable. */
+.screen > :first-child { margin-top: auto; }
+.screen > :last-child { margin-bottom: auto; }
 #screen-title { background: radial-gradient(ellipse at center, rgba(5, 6, 24, 0.25), rgba(5, 6, 24, 0.78)); }
 
 .title-emblem {
@@ -274,6 +306,67 @@ body.touch #pause-btn { display: block; }
 }
 .big-btn:hover { filter: brightness(1.08); }
 .big-btn:active { transform: translateY(1px); }
+.big-btn.secondary {
+  color: #ffe9b0;
+  background: linear-gradient(180deg, rgba(38, 46, 110, 0.95), rgba(16, 20, 58, 0.95));
+  border: 1px solid rgba(255, 217, 122, 0.55);
+  box-shadow: 0 0 18px rgba(88, 98, 214, 0.35);
+}
+.title-buttons { display: flex; gap: 14px; flex-wrap: wrap; justify-content: center; }
+#title-meta {
+  margin: 0 0 14px;
+  font-size: 14px; font-weight: 800; letter-spacing: 0.16em;
+  color: #ffd97a;
+  text-shadow: 0 0 12px rgba(255, 179, 64, 0.45);
+}
+
+/* --- Workshop ----------------------------------------------------------------- */
+
+#screen-workshop { justify-content: flex-start; padding: 20px 16px calc(20px + env(safe-area-inset-bottom, 0px)); }
+#workshop-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(248px, 1fr));
+  gap: 12px;
+  width: min(1080px, 100%);
+  margin-bottom: 20px;
+}
+.node {
+  font: inherit;
+  display: flex; align-items: center; gap: 12px;
+  min-height: 78px;
+  text-align: left;
+  padding: 12px 14px;
+  border-radius: 12px;
+  border: 1px solid rgba(120, 132, 255, 0.45);
+  background: linear-gradient(180deg, rgba(20, 26, 77, 0.94), rgba(11, 14, 42, 0.94));
+  color: #e8eaff;
+  cursor: pointer;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.35), inset 0 1px 0 rgba(190, 198, 255, 0.12);
+  transition: transform 0.12s, border-color 0.12s;
+}
+.node:hover:not(:disabled) { transform: translateY(-2px); border-color: #ffd97a; }
+.node:disabled { cursor: default; }
+.node.poor { opacity: 0.5; }
+.node.maxed { border-color: rgba(46, 230, 200, 0.55); }
+.node-icon { font-size: 26px; flex: none; }
+.node-main { flex: 1; display: flex; flex-direction: column; gap: 3px; min-width: 0; }
+.node-name { font-size: 15.5px; font-weight: 800; color: #ffe9b0; }
+.node-pips { font-size: 9px; letter-spacing: 0.18em; color: #2ee6c8; margin-left: 6px; }
+.node-desc { font-size: 12.5px; color: #c9ceff; line-height: 1.4; }
+.node-cost { font-size: 15px; font-weight: 800; color: #ffd97a; flex: none; }
+.node.maxed .node-cost { color: #2ee6c8; font-size: 12px; letter-spacing: 0.14em; }
+.workshop-foot { display: flex; gap: 16px; align-items: center; flex-wrap: wrap; justify-content: center; }
+.danger-btn {
+  font: inherit;
+  font-size: 12.5px; font-weight: 700; letter-spacing: 0.06em;
+  color: #ff8fab;
+  background: transparent;
+  border: 1px solid rgba(227, 61, 110, 0.5);
+  border-radius: 10px;
+  padding: 9px 16px;
+  cursor: pointer;
+}
+.danger-btn:hover { border-color: #ff5d7a; color: #ffd7e2; }
 
 .screen-heading { font-size: 34px; font-weight: 900; letter-spacing: 0.06em; color: #ffe9b0; margin: 0 0 6px; text-shadow: 0 0 22px rgba(255, 179, 64, 0.5); }
 .screen-sub { color: #9aa3e8; margin: 0 0 20px; font-size: 15px; }
@@ -309,6 +402,33 @@ body.touch #pause-btn { display: block; }
 .card.relic:hover { border-color: #ffd97a; box-shadow: 0 12px 34px rgba(196, 77, 255, 0.35), inset 0 1px 0 rgba(190, 198, 255, 0.14); }
 .card.relic .card-tag { color: #d9a6ff; }
 .card.relic .card-icon { border-color: rgba(255, 217, 122, 0.65); box-shadow: 0 0 16px rgba(196, 77, 255, 0.4), inset 0 1px 0 rgba(255, 255, 255, 0.25); }
+/* Relic tiers: Silver reads cool and plain, Gold warms up, and Prismatic wears
+   the whole spectrum with a slow pulse — the card announces its rarity. */
+.card.tier-silver { border-color: rgba(159, 180, 216, 0.65); }
+.card.tier-silver .card-tag { color: #c9d6f2; }
+.card.tier-gold {
+  border-color: rgba(255, 179, 64, 0.85);
+  background: linear-gradient(180deg, rgba(77, 52, 10, 0.96), rgba(30, 20, 6, 0.96));
+  box-shadow: 0 6px 22px rgba(0, 0, 0, 0.4), 0 0 18px rgba(255, 179, 64, 0.28), inset 0 1px 0 rgba(255, 233, 176, 0.25);
+}
+.card.tier-gold .card-tag { color: #ffd97a; }
+.card.tier-prismatic {
+  border: 2px solid rgba(196, 77, 255, 0.9);
+  background: linear-gradient(160deg, rgba(64, 14, 92, 0.97), rgba(92, 16, 52, 0.97) 55%, rgba(16, 40, 92, 0.97));
+  box-shadow: 0 6px 26px rgba(0, 0, 0, 0.45), 0 0 26px rgba(196, 77, 255, 0.55), 0 0 46px rgba(255, 93, 122, 0.3), inset 0 1px 0 rgba(255, 255, 255, 0.3);
+  animation: prismatic-pulse 1.8s ease-in-out infinite;
+}
+.card.tier-prismatic .card-tag {
+  background: linear-gradient(90deg, #ffd97a, #ff8fab, #d9a6ff, #8ffbe9);
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+}
+.card.tier-prismatic .card-icon { animation: prismatic-pulse 1.8s ease-in-out infinite; }
+@keyframes prismatic-pulse {
+  0%, 100% { filter: hue-rotate(0deg) brightness(1); }
+  50% { filter: hue-rotate(35deg) brightness(1.13); }
+}
 .card-icon {
   font-size: 27px;
   line-height: 1;
@@ -353,6 +473,77 @@ body.touch #pause-btn { display: block; }
 #end-stats span { font-size: 11px; letter-spacing: 0.14em; color: #9aa3e8; text-transform: uppercase; }
 #end-stats strong { font-size: 22px; color: #ffe9b0; }
 #end-stats .stat-score strong { font-size: 27px; }
+#end-stats .stat-reward { border-color: rgba(255, 217, 122, 0.6); }
+#end-stats .stat-reward strong { color: #ffd97a; text-shadow: 0 0 12px rgba(255, 179, 64, 0.5); }
+
+/* --- Rotate hint (touch, portrait) ------------------------------------------- */
+
+#rotate-hint {
+  position: absolute; inset: 0;
+  display: none;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  text-align: center;
+  padding: 24px;
+  background: rgba(5, 6, 24, 0.93);
+  z-index: 60;
+}
+body.portrait #rotate-hint { display: flex; }
+.rotate-icon { font-size: 54px; animation: rotate-nudge 1.8s ease-in-out infinite; }
+@keyframes rotate-nudge {
+  0%, 55%, 100% { transform: rotate(0deg); }
+  75%, 90% { transform: rotate(90deg); }
+}
+.rotate-title { font-size: 30px; font-weight: 900; letter-spacing: 0.06em; color: #ffe9b0; text-shadow: 0 0 22px rgba(255, 179, 64, 0.5); }
+.rotate-sub { color: #9aa3e8; font-size: 14.5px; margin: 0; }
+
+/* --- Compact landscape (phones held sideways) ---------------------------------- */
+/* Short viewports squeeze the chrome, not the arena: slimmer HUD clusters, a
+   smaller timer, thumb-reachable corners, and cards that fit the height. */
+
+@media (max-height: 520px) {
+  #hud { padding-top: calc(6px + env(safe-area-inset-top, 0px)); }
+  .hud-cluster { min-width: 0; padding: 6px 10px; gap: 3px; border-radius: 10px; }
+  .hp-bar { width: 112px; height: 11px; }
+  .dash-bar { width: 112px; height: 6px; }
+  .bar-text { min-width: 58px; font-size: 11px; }
+  .bar-label { width: 30px; font-size: 10px; }
+  .hud-center { padding: 5px 14px 4px; }
+  #timer-text { font-size: 20px; }
+  .timer-caption { font-size: 8.5px; }
+  #score-text { font-size: 15px; }
+  #combo-text { font-size: 11.5px; }
+  .hud-right-sub { font-size: 13px; }
+  .xp-bar { height: 6px; margin-top: 5px; }
+  #bossbar { bottom: 8px; width: min(420px, 58vw); }
+  .boss-name { font-size: 12.5px; margin-bottom: 4px; }
+  .boss-bar { height: 11px; }
+  #pause-btn { top: 72px; }
+  #loadout-btn { top: 122px; }
+  #mute-btn { bottom: calc(10px + env(safe-area-inset-bottom, 0px)); }
+  .screen { padding: 12px; }
+  .game-title { font-size: clamp(34px, 8vw, 54px); margin-bottom: 8px; }
+  .title-emblem { font-size: 28px; margin-bottom: 2px; }
+  .tagline { font-size: 14.5px; margin-bottom: 8px; }
+  .features { margin-bottom: 10px; }
+  #title-meta { margin-bottom: 8px; font-size: 12.5px; }
+  .howto { font-size: 12.5px; line-height: 1.5; margin-bottom: 12px; }
+  .big-btn { font-size: 15.5px; padding: 11px 22px; }
+  .screen-heading { font-size: 24px; }
+  .screen-sub { margin-bottom: 12px; font-size: 13.5px; }
+  .card { width: 192px; min-height: 158px; padding: 11px 12px 10px; gap: 5px; }
+  .card-icon { width: 42px; height: 42px; font-size: 22px; }
+  .card-title { font-size: 17px; }
+  .card-desc { font-size: 12.5px; }
+  #end-title { font-size: 36px; }
+  #end-stats { margin-bottom: 14px; gap: 9px; }
+  #end-stats > div { min-width: 106px; padding: 8px 12px; }
+  #end-stats strong { font-size: 18px; }
+  #banner { top: 18%; }
+  .banner-title { font-size: 24px; }
+}
 #end-stats .stat-rank { border-color: rgba(255, 217, 122, 0.55); }
 #end-stats strong.rank { font-size: 30px; line-height: 1; }
 #end-stats strong.rank-S { color: #ffd97a; text-shadow: 0 0 18px rgba(255, 217, 122, 0.85); }

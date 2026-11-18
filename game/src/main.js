@@ -5,20 +5,22 @@
 // state advances the simulation. `window.__lumenfall` exposes the game object, which the
 // maker's own playtest script drives to verify a run end to end.
 
-import { RUN_DURATION, xpForLevel } from './config.js';
+import { RUN_DURATION, PLAYER, WEAPON_MAX_LEVEL, xpForLevel } from './config.js';
 import * as audio from './audio.js';
-import { initInput, wasPressed, anyPressed, endFrame, onFirstGesture } from './input.js';
+import { initInput, wasPressed, anyPressed, endFrame, onFirstGesture, isTouchDevice } from './input.js';
 import { makePlayer, updatePlayer, updateEnemies, updateProjectiles, updateShards, spawnEnemy, damageEnemy } from './entities.js';
 import { makeLoadout, updateWeapons, buildChoices } from './weapons.js';
 import { makeDirector, updateDirector } from './director.js';
-import { initEffects, updateEffects, spawnTrailPuff, spawnMote } from './particles.js';
+import { initEffects, updateEffects, spawnTrailPuff, spawnMote, spawnRing, spawnFlash, addShake } from './particles.js';
 import { initBackground, renderGame } from './render.js';
 import { onArtReady } from './sprites.js';
 import { makeScore, updateScore, settleScore } from './score.js';
-import { makeRelicState, buildRelicChoices, updateRelics } from './relics.js';
+import { makeRelicState, buildRelicChoices, updateRelics, hasRelic, RELICS } from './relics.js';
+import * as meta from './meta.js';
+import { COLORS } from './config.js';
 import {
   buildUI, showScreen, updateHUD, showLevelUp, pickLevelUpChoice,
-  showEnd, showBanner, hideBanner, setMutedIcon,
+  showEnd, showBanner, hideBanner, setMutedIcon, updateTitleMeta, renderWorkshop,
 } from './ui.js';
 
 const canvas = document.getElementById('game');
@@ -50,6 +52,16 @@ const game = {
   bannerShown: false,
   score: null,
   relics: null,
+  save: null,
+  crit: { chance: 0.05, mul: 2 },
+  elitesKilled: 0,
+  lastRewards: null,
+  reviveAvailable: false,
+  reviveUsed: false,
+  chainsparkUnlocked: false,
+  prismUnlocked: false,
+  extraRelicChoice: false,
+  meteorSuppressed: false,
   pendingRelicDrafts: 0,
   phaseIdx: 0,
   phaseBannerT: 0,
@@ -64,6 +76,8 @@ window.__lumenfall = game;
 // arrival, the dawn victory) by spawning and striking foes through these two handles.
 game.spawnEnemy = spawnEnemy;
 game.damageEnemy = damageEnemy;
+game.buildRelicChoices = buildRelicChoices;
+game.meta = meta;
 
 const ui = buildUI({
   onStart: () => startRun(),
@@ -71,6 +85,10 @@ const ui = buildUI({
   onResume: () => resumeGame(),
   onPause: () => pauseGame(),
   onMuteToggle: () => toggleMute(),
+  onWorkshop: () => openWorkshop(),
+  onWorkshopBack: () => closeWorkshop(),
+  onBuyNode: (key) => buyWorkshopNode(key),
+  onResetSave: (button) => resetSaveFlow(button),
 });
 
 function resetGame() {
@@ -86,6 +104,7 @@ function resetGame() {
   game.passives = loadout.passives;
   game.director = makeDirector();
   game.kills = 0;
+  game.elitesKilled = 0;
   game.level = 1;
   game.xp = 0;
   game.xpNext = xpForLevel(1);
@@ -102,7 +121,40 @@ function resetGame() {
   game.pendingRelicDrafts = 0;
   game.phaseIdx = 0;
   game.phaseBannerT = 0;
+  applyMeta();
   initEffects(game);
+}
+
+// The warden's permanent growth, folded into the fresh run: workshop bonuses and
+// account-level bumps ride the same stat pipeline the blessings use, so nothing
+// downstream needs to know they came from between runs.
+function applyMeta() {
+  if (!game.save) game.save = meta.loadSave();
+  const bonuses = meta.computeMetaBonuses(game.save);
+  game.metaBonuses = bonuses;
+  const p = game.passives;
+  p.damageMul *= bonuses.damageMul;
+  p.speedMul *= bonuses.speedMul;
+  p.magnetMul *= bonuses.magnetMul;
+  p.dashCdMul *= bonuses.dashCdMul;
+  p.xpMul *= bonuses.xpGainMul;
+  p.armor = bonuses.armor;
+  game.player.maxHp = PLAYER.baseHp + bonuses.maxHpBonus;
+  game.player.hp = game.player.maxHp;
+  game.crit = { chance: 0.05 + bonuses.critChance, mul: 2 };
+  game.weapons.weapons.starbolts.level = Math.min(WEAPON_MAX_LEVEL, 1 + bonuses.startWeaponBonus);
+  game.chainsparkUnlocked = bonuses.chainsparkUnlocked;
+  game.prismUnlocked = bonuses.prismUnlocked;
+  game.extraRelicChoice = bonuses.extraChoice;
+  game.reviveAvailable = bonuses.revive;
+  game.reviveUsed = false;
+  // The Heirloom: a random silver or gold relic rides into the run from the start.
+  if (bonuses.startRelic) {
+    const heirloomPool = RELICS.filter((r) => r.tier !== 'prismatic');
+    const relic = heirloomPool[Math.floor(Math.random() * heirloomPool.length)];
+    game.relics.owned.push(relic.key);
+    relic.apply(game);
+  }
 }
 
 function startRun() {
@@ -140,20 +192,98 @@ function endRun(victory) {
   game.bannerShown = false;
   hideBanner(ui);
   settleScore(game);
+  // Every run pays: Stardust and account XP bank into the save before the end
+  // screen reads them back as the run's wages.
+  const rewards = meta.computeRunRewards(game, game.metaBonuses);
+  const outcome = meta.applyRunRewards(game.save, rewards, { kills: game.kills, victory });
+  game.lastRewards = { ...rewards, levelsGained: outcome.levelsGained };
+  updateTitleMeta(ui, game.save);
   if (victory) audio.sfxVictory();
   else audio.sfxDefeat();
   showEnd(ui, victory, game);
   showScreen(ui, 'end');
 }
 
+// --- The workshop -------------------------------------------------------------
+
+function openWorkshop() {
+  if (game.state !== 'title') return;
+  audio.ensureAudio();
+  audio.sfxUiClick();
+  game.state = 'workshop';
+  renderWorkshop(ui, game.save, (key) => buyWorkshopNode(key));
+  showScreen(ui, 'workshop');
+}
+
+function closeWorkshop() {
+  if (game.state !== 'workshop') return;
+  audio.sfxUiClick();
+  game.state = 'title';
+  updateTitleMeta(ui, game.save);
+  showScreen(ui, 'title');
+}
+
+function buyWorkshopNode(key) {
+  const result = meta.buyNode(game.save, key);
+  if (result === 'ok') {
+    audio.sfxLevelUp();
+    renderWorkshop(ui, game.save, (k) => buyWorkshopNode(k));
+    updateTitleMeta(ui, game.save);
+  } else {
+    audio.sfxUiClick();
+  }
+}
+
+// Resetting the save is forever, so the button arms first and only fires on a
+// second tap within three seconds.
+let resetArmTimer = 0;
+function resetSaveFlow(button) {
+  if (!button.dataset.armed) {
+    button.dataset.armed = '1';
+    button.textContent = 'Tap again to erase everything';
+    window.clearTimeout(resetArmTimer);
+    resetArmTimer = window.setTimeout(() => {
+      delete button.dataset.armed;
+      button.textContent = 'Reset save';
+    }, 3000);
+    return;
+  }
+  delete button.dataset.armed;
+  button.textContent = 'Reset save';
+  game.save = meta.resetSave();
+  audio.sfxUiClick();
+  renderWorkshop(ui, game.save, (key) => buyWorkshopNode(key));
+  updateTitleMeta(ui, game.save);
+}
+
 // XP in, levels out: crossing a threshold pauses the run for an upgrade choice.
 function gainXp(amount) {
-  game.xp += amount * (game.relics ? game.relics.xpMul : 1);
+  const xpMul = (game.passives ? game.passives.xpMul : 1) * (game.relics ? game.relics.xpMul : 1);
+  game.xp += amount * xpMul;
+  let gained = 0;
   while (game.xp >= game.xpNext) {
     game.xp -= game.xpNext;
     game.level++;
     game.xpNext = xpForLevel(game.level);
     game.pendingLevels++;
+    gained++;
+  }
+  // The Dawn Nova turns every level into a detonation around the warden.
+  if (gained > 0 && hasRelic(game, 'dawnnova')) {
+    const p = game.player;
+    spawnRing(game, p.x, p.y, COLORS.nova, 230, 6);
+    spawnFlash(game, p.x, p.y, COLORS.nova, 130, 0.3);
+    addShake(game, 9);
+    audio.sfxNova();
+    for (const enemy of [...game.enemies]) {
+      if (enemy.dead) continue;
+      const dx = enemy.x - p.x;
+      const dy = enemy.y - p.y;
+      const d = Math.hypot(dx, dy);
+      if (d < 230 + enemy.radius) {
+        damageEnemy(game, enemy, 120 * game.passives.damageMul, (dx / (d || 1)) * 300, (dy / (d || 1)) * 300);
+      }
+    }
   }
   if (game.pendingLevels > 0 && game.state === 'playing') openLevelUp();
 }
@@ -208,6 +338,7 @@ function handleKeys() {
   if (wasPressed('KeyM')) toggleMute();
 
   if (game.state === 'title' && anyPressed(['Enter', 'Space'])) startRun();
+  else if (game.state === 'workshop' && anyPressed(['Escape', 'Enter'])) closeWorkshop();
   else if ((game.state === 'victory' || game.state === 'gameover') && anyPressed(['Enter', 'KeyR'])) startRun();
   else if (game.state === 'playing' && anyPressed(['KeyP', 'Escape'])) pauseGame();
   else if (game.state === 'paused' && anyPressed(['KeyP', 'Escape', 'Enter'])) resumeGame();
@@ -215,6 +346,7 @@ function handleKeys() {
     if (wasPressed('Digit1')) pickLevelUpChoice(ui, 0);
     else if (wasPressed('Digit2')) pickLevelUpChoice(ui, 1);
     else if (wasPressed('Digit3')) pickLevelUpChoice(ui, 2);
+    else if (wasPressed('Digit4')) pickLevelUpChoice(ui, 3);
   }
 }
 
@@ -299,7 +431,7 @@ function loop(ts) {
 
   handleKeys();
   if (game.state === 'playing') updatePlaying(dt);
-  else if (game.state === 'title') updateTitle(dt);
+  else if (game.state === 'title' || game.state === 'workshop') updateTitle(dt);
 
   renderGame(ctx, game, canvas.width, canvas.height);
   if (game.state !== 'title') updateHUD(ui, game);
@@ -309,28 +441,39 @@ function loop(ts) {
 function resize() {
   canvas.width = window.innerWidth;
   canvas.height = window.innerHeight;
+  // Short viewports (a phone held sideways) get a tighter frame so the arena
+  // keeps the height the HUD would otherwise eat.
+  const compact = canvas.height < 520;
   game.arena = {
     x: 24,
-    y: 82,
+    y: compact ? 64 : 82,
     w: canvas.width - 48,
-    h: canvas.height - 106,
+    h: canvas.height - (compact ? 86 : 106),
   };
   initBackground(canvas.width, canvas.height, game.arena);
   if (game.player) {
     game.player.x = Math.min(game.arena.x + game.arena.w - 20, Math.max(game.arena.x + 20, game.player.x));
     game.player.y = Math.min(game.arena.y + game.arena.h - 20, Math.max(game.arena.y + 20, game.player.y));
   }
+  // Landscape-first on touch devices: held upright mid-run, the game pauses
+  // itself under the rotate hint rather than playing on in a letterbox.
+  const portrait = isTouchDevice() && window.innerHeight > window.innerWidth;
+  document.body.classList.toggle('portrait', portrait);
+  if (portrait && game.state === 'playing') pauseGame();
 }
 
 // Boot: a fresh world behind the title screen, then the loop.
 window.addEventListener('resize', resize);
+window.addEventListener('orientationchange', resize);
 initInput(canvas);
 onFirstGesture(() => audio.ensureAudio());
+game.save = meta.loadSave();
 resize();
 // When the tileset art lands, rebake the world once so the arena floor is
 // laid from the pack's real stone tiles (the first bake used the fallback).
 onArtReady(() => resize());
 resetGame();
 showScreen(ui, 'title');
+updateTitleMeta(ui, game.save);
 setMutedIcon(ui, audio.isMuted());
 requestAnimationFrame(loop);

@@ -1,6 +1,8 @@
-// Lumenfall Arena — weapons and upgrades: the four auto-firing weapons, the five stacking
+// Lumenfall Arena — weapons and upgrades: the four auto-firing weapons, the seven stacking
 // passives, and the pool the level-up screen draws its three choices from. Weapons fire on
 // their own; the player's skill is positioning, so each weapon rewards a different range.
+// The numbers are generous on purpose: blessings multiply (Ember Core is ×1.25 a stack),
+// so a build that commits pulls away from the swarm instead of scratching it.
 
 import { COLORS, WEAPONS, WEAPON_MAX_LEVEL } from './config.js';
 import { fireBolt, nearestEnemy, damageEnemy } from './entities.js';
@@ -21,6 +23,8 @@ export function makeLoadout() {
       damageMul: 1,
       magnetMul: 1,
       dashCdMul: 1,
+      xpMul: 1,
+      armor: 0,
     },
     // How many times each passive blessing has been taken — the loadout panel
     // reads this, and it is the only place the count survives.
@@ -80,7 +84,10 @@ function updateOrbitBlades(game, dt, weapon, player) {
   const cfg = WEAPONS.orbitblades;
   const li = weapon.level - 1;
   weapon.angle += cfg.spin * dt;
-  const count = cfg.count[li];
+  // The Crown of Blades adds three more blades to the orbit, and its blades
+  // find soft places far more often than any other weapon's hits.
+  const crowned = hasRelic(game, 'orbitcrown');
+  const count = cfg.count[li] + (crowned ? 3 : 0);
   const radius = cfg.radius[li];
   loadout.orbitOrbs = [];
   for (let i = 0; i < count; i++) {
@@ -95,7 +102,7 @@ function updateOrbitBlades(game, dt, weapon, player) {
       if (dx * dx + dy * dy < rr * rr && game.elapsed - enemy.orbitHitAt > cfg.hitEvery) {
         enemy.orbitHitAt = game.elapsed;
         const d = Math.hypot(dx, dy) || 1;
-        damageEnemy(game, enemy, dmg(game, cfg.damage[li]), (dx / d) * 90, (dy / d) * 90);
+        damageEnemy(game, enemy, dmg(game, cfg.damage[li]), (dx / d) * 90, (dy / d) * 90, crowned ? 0.25 : 0);
       }
     }
   }
@@ -136,8 +143,8 @@ function updateChainSpark(game, dt, weapon, player) {
     return;
   }
   weapon.timer = cfg.interval[li];
-  // The Storm Conductor stretches the arc: one more leap for the lightning.
-  const chainCount = cfg.chains[li] + (hasRelic(game, 'stormconductor') ? 1 : 0);
+  // The Storm Conductor stretches the arc: two more leaps for the lightning.
+  const chainCount = cfg.chains[li] + (hasRelic(game, 'stormconductor') ? 2 : 0);
   const points = [{ x: player.x, y: player.y }];
   const visited = new Set();
   let falloff = 1;
@@ -171,11 +178,13 @@ function updateChainSpark(game, dt, weapon, player) {
 // --- Level-up choices --------------------------------------------------------
 
 const PASSIVES = [
-  { key: 'swift', name: 'Swift Sigil', desc: '+8% movement speed. Outrun the swarm.', apply: (g) => { g.passives.speedMul *= 1.08; } },
-  { key: 'vitality', name: 'Dawn Heart', desc: '+25 max health, and heal 25 now.', apply: (g) => { g.player.maxHp += 25; g.player.hp = Math.min(g.player.maxHp, g.player.hp + 25); } },
-  { key: 'lodestone', name: 'Lodestone Charm', desc: '+35% shard magnet radius.', apply: (g) => { g.passives.magnetMul *= 1.35; } },
-  { key: 'power', name: 'Ember Core', desc: '+12% damage on every weapon.', apply: (g) => { g.passives.damageMul *= 1.12; } },
-  { key: 'dashflow', name: 'Phase Ribbon', desc: 'Dash recharges 15% faster.', apply: (g) => { g.passives.dashCdMul *= 0.85; } },
+  { key: 'swift', name: 'Swift Sigil', desc: '+10% movement speed. Outrun the swarm.', apply: (g) => { g.passives.speedMul *= 1.10; } },
+  { key: 'vitality', name: 'Dawn Heart', desc: '+30 max health, and heal 30 now.', apply: (g) => { g.player.maxHp += 30; g.player.hp = Math.min(g.player.maxHp, g.player.hp + 30); } },
+  { key: 'lodestone', name: 'Lodestone Charm', desc: '+40% shard magnet radius.', apply: (g) => { g.passives.magnetMul *= 1.40; } },
+  { key: 'power', name: 'Ember Core', desc: '×1.25 damage on every weapon — and it multiplies with itself.', apply: (g) => { g.passives.damageMul *= 1.25; } },
+  { key: 'dashflow', name: 'Phase Ribbon', desc: 'Dash recharges 20% faster.', apply: (g) => { g.passives.dashCdMul *= 0.80; } },
+  { key: 'crit', name: 'Killer Instinct', desc: '+8% critical chance. Crits strike for double damage.', apply: (g) => { g.crit.chance += 0.08; } },
+  { key: 'scholar', name: 'Star Scholar', desc: '+20% XP from every shard gathered.', apply: (g) => { g.passives.xpMul *= 1.2; } },
 ];
 
 // The loadout panel lists blessings by name; it reads the same table.
@@ -186,6 +195,9 @@ export const PASSIVE_DEFS = PASSIVES;
 export function buildChoices(game) {
   const pool = [];
   for (const [key, cfg] of Object.entries(WEAPONS)) {
+    // Chain Spark is earned, not found: it joins the pool once the warden's
+    // account reaches level 3 (main.js stamps the unlock onto the game).
+    if (key === 'chainspark' && game.chainsparkUnlocked === false) continue;
     const level = game.weapons.weapons[key].level;
     if (level < WEAPON_MAX_LEVEL) {
       pool.push({

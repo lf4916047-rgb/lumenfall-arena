@@ -86,8 +86,9 @@ export function updateDirector(game, dt) {
     if (game.enemies.length < aliveCap(elapsed)) {
       const point = edgeSpawnPoint(game);
       spawnEnemy(game, pickKind(elapsed), point.x, point.y);
-      // Late in the run, spawns sometimes arrive as a small knot.
-      if (elapsed > 150 && Math.random() < 0.35) {
+      // Late in the run, spawns often arrive as a small knot — by then a built
+      // warden wants a crowd to melt, not a trickle.
+      if (elapsed > 150 && Math.random() < (elapsed > 200 ? 0.5 : 0.35)) {
         const extra = edgeSpawnPoint(game);
         spawnEnemy(game, pickKind(elapsed), extra.x, extra.y);
       }

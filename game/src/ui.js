@@ -8,6 +8,7 @@ import { isTouchDevice } from './input.js';
 import { PASSIVE_DEFS } from './weapons.js';
 import { RELIC_BY_KEY } from './relics.js';
 import { rankForScore } from './score.js';
+import { NODES, nodeRank, accountXpForLevel } from './meta.js';
 
 function el(id) {
   return document.getElementById(id);
@@ -39,11 +40,16 @@ export function buildUI(handlers) {
       levelup: el('screen-levelup'),
       pause: el('screen-pause'),
       end: el('screen-end'),
+      workshop: el('screen-workshop'),
     },
     levelupCards: el('levelup-cards'),
     endTitle: el('end-title'),
     endStats: el('end-stats'),
     endSub: el('end-sub'),
+    titleMeta: el('title-meta'),
+    workshopMeta: el('workshop-meta'),
+    workshopGrid: el('workshop-grid'),
+    loadoutBtn: el('loadout-btn'),
     currentChoices: [],
     onPickLevelUp: null,
   };
@@ -53,6 +59,12 @@ export function buildUI(handlers) {
   el('resume-btn').addEventListener('click', () => handlers.onResume());
   ui.muteBtn.addEventListener('click', () => handlers.onMuteToggle());
   if (ui.pauseBtn) ui.pauseBtn.addEventListener('click', () => handlers.onPause());
+  el('workshop-btn').addEventListener('click', () => handlers.onWorkshop());
+  el('workshop-back-btn').addEventListener('click', () => handlers.onWorkshopBack());
+  el('save-reset-btn').addEventListener('click', (event) => handlers.onResetSave(event.currentTarget));
+  if (ui.loadoutBtn) {
+    ui.loadoutBtn.addEventListener('click', () => ui.loadout.classList.toggle('open'));
+  }
 
   // On touch devices the prompts speak of taps, not keys, and the pause button
   // (touch-only in the stylesheet) joins the page. Desktop text is untouched.
@@ -75,6 +87,8 @@ export function showScreen(ui, name) {
   const inRun = name === 'none' || name === 'levelup' || name === 'pause';
   ui.hud.classList.toggle('visible', inRun);
   if (ui.loadout) ui.loadout.classList.toggle('visible', inRun);
+  if (ui.loadoutBtn) ui.loadoutBtn.classList.toggle('visible', inRun);
+  if (!inRun && ui.loadout) ui.loadout.classList.remove('open');
 }
 
 export function setMutedIcon(ui, muted) {
@@ -187,6 +201,8 @@ const CHOICE_ICONS = {
   lodestone: '🧲',
   power: '🔥',
   dashflow: '🌪️',
+  crit: '🎯',
+  scholar: '📚',
 };
 
 // Build the three choice cards — level-up blessings by default, the relic draft
@@ -204,7 +220,7 @@ export function showLevelUp(ui, choices, onPick, opts = {}) {
   ui.levelupCards.innerHTML = '';
   choices.forEach((choice, i) => {
     const card = document.createElement('button');
-    card.className = `card ${choice.kind}`;
+    card.className = `card ${choice.kind}${choice.tier ? ` tier-${choice.tier}` : ''}`;
     card.innerHTML = `
       <span class="card-icon">${choice.icon ?? CHOICE_ICONS[choice.key] ?? '✦'}</span>
       <span class="card-tag">${choice.tag}</span>
@@ -236,6 +252,13 @@ export function showEnd(ui, victory, game) {
   const score = game.score ? game.score.score : 0;
   const rank = rankForScore(score);
   const bestLine = game.score && game.score.isBest ? '★ New best!' : `Best ${game.score ? game.score.best.toLocaleString('en-US') : 0}`;
+  const rewards = game.lastRewards;
+  const save = game.save;
+  const rewardLines = rewards && save ? `
+    <div class="stat-reward"><span>Stardust earned</span><strong>+${rewards.stardust} ★</strong></div>
+    <div><span>Account XP</span><strong>+${rewards.accountXp}</strong></div>
+    <div><span>Warden level</span><strong>LV ${save.accountLevel}${rewards.levelsGained > 0 ? ' ★ LEVEL UP!' : ''}</strong></div>
+    <div><span>Stardust bank</span><strong>${save.stardust.toLocaleString('en-US')} ★</strong></div>` : '';
   ui.endStats.innerHTML = `
     <div class="stat-score"><span>Final score</span><strong>${score.toLocaleString('en-US')}</strong></div>
     <div class="stat-rank"><span>Rank</span><strong class="rank rank-${rank}">${rank}</strong></div>
@@ -243,5 +266,44 @@ export function showEnd(ui, victory, game) {
     <div><span>Foes unmade</span><strong>${game.kills}</strong></div>
     <div><span>Level reached</span><strong>${game.level}</strong></div>
     <div><span>Hollow King</span><strong>${game.bossDefeated ? 'Defeated' : 'Unbowed'}</strong></div>
-    <div><span>Best score</span><strong class="best-line">${bestLine}</strong></div>`;
+    <div><span>Best score</span><strong class="best-line">${bestLine}</strong></div>${rewardLines}`;
+}
+
+// --- Meta progression: the title banner line and the workshop -----------------
+
+// The title screen carries the warden's standing: account level and the bank.
+export function updateTitleMeta(ui, save) {
+  if (!ui.titleMeta || !save) return;
+  ui.titleMeta.textContent = `WARDEN LV ${save.accountLevel} · ★ ${save.stardust.toLocaleString('en-US')} STARDUST · ${save.runs} VIGILS KEPT`;
+}
+
+// The workshop grid: one tappable card per node — icon, name, rank pips, the
+// effect in plain words, and a price that greys out when the bank cannot pay
+// (or reads MAXED when the node is fully grown). Buying re-renders the grid.
+export function renderWorkshop(ui, save, onBuy) {
+  if (!ui.workshopGrid || !save) return;
+  const xpNeed = accountXpForLevel(save.accountLevel);
+  ui.workshopMeta.textContent =
+    `WARDEN LV ${save.accountLevel} — ${save.accountXp} / ${xpNeed} XP to next · ★ ${save.stardust.toLocaleString('en-US')} STARDUST banked`;
+  ui.workshopGrid.innerHTML = '';
+  for (const node of NODES) {
+    const rank = nodeRank(save, node.key);
+    const maxed = rank >= node.costs.length;
+    const cost = maxed ? null : node.costs[rank];
+    const afford = !maxed && save.stardust >= cost;
+    const card = document.createElement('button');
+    card.className = `node${maxed ? ' maxed' : ''}${!maxed && !afford ? ' poor' : ''}`;
+    card.dataset.node = node.key;
+    const pips = '●'.repeat(rank) + '○'.repeat(node.costs.length - rank);
+    card.innerHTML = `
+      <span class="node-icon">${node.icon}</span>
+      <span class="node-main">
+        <span class="node-name">${node.name} <span class="node-pips">${pips}</span></span>
+        <span class="node-desc">${node.desc}</span>
+      </span>
+      <span class="node-cost">${maxed ? 'MAXED' : `${cost} ★`}</span>`;
+    card.disabled = maxed || !afford;
+    if (!card.disabled) card.addEventListener('click', () => onBuy(node.key));
+    ui.workshopGrid.appendChild(card);
+  }
 }

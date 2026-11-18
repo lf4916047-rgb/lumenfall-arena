@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
 <meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>Lumenfall Arena — survive to dawn</title>
 <link rel="icon" href="data:,">
 <link rel="stylesheet" href="./style.css">
@@ -42,8 +42,16 @@
     <div class="bar xp-bar"><div id="xp-fill"></div></div>
   </div>
 
-  <!-- The build, written out: weapons, blessings, relics (wide screens only) -->
+  <!-- The build, written out: weapons, blessings, relics (wide screens; a toggleable strip on phones) -->
   <aside id="loadout"><div id="loadout-body"></div></aside>
+  <button id="loadout-btn" title="Loadout">⚔</button>
+
+  <!-- Landscape-first on phones: held upright, the arena asks for a turn -->
+  <div id="rotate-hint">
+    <div class="rotate-icon">📱</div>
+    <div class="rotate-title">↻ 横屏更好玩</div>
+    <p class="rotate-sub">Rotate your phone — the arena needs the wide sky.</p>
+  </div>
 
   <!-- Boss health -->
   <div id="bossbar">
@@ -65,13 +73,30 @@
     <div class="title-emblem">✦</div>
     <h1 class="game-title">LUMENFALL<br>ARENA</h1>
     <p class="tagline">The last Star-Warden against the swarm. Survive five minutes to dawn — and unmake the Hollow King.</p>
-    <p class="features"><span>4 auto-weapons</span><span>5 blessings</span><span>10 court relics</span><span>score · combo · ranks</span><span>the Hollow King at 4:00</span></p>
+    <p class="features"><span>4 auto-weapons</span><span>7 blessings</span><span>14 relics · silver · gold · prismatic</span><span>workshop growth</span><span>the Hollow King at 4:00</span></p>
+    <p id="title-meta">WARDEN LV 1 · ★ 0 STARDUST</p>
     <p class="howto">
       <strong>WASD / Arrows</strong> move &nbsp;·&nbsp; <strong>Space / Shift</strong> dash &nbsp;·&nbsp; <strong>P</strong> pause &nbsp;·&nbsp; <strong>M</strong> mute<br>
       Your weapons fire on their own. Gather the teal lumen shards, level up, and build your arsenal.
+      Every run pays Stardust — spend it in the Workshop and grow stronger for good.
     </p>
-    <button id="start-btn" class="big-btn">▶ &nbsp;START THE VIGIL</button>
+    <div class="title-buttons">
+      <button id="start-btn" class="big-btn">▶ &nbsp;START THE VIGIL</button>
+      <button id="workshop-btn" class="big-btn secondary">🛠 &nbsp;成长 WORKSHOP</button>
+    </div>
     <p class="hint">or press Enter</p>
+  </section>
+
+  <!-- Workshop: permanent growth, bought with Stardust -->
+  <section id="screen-workshop" class="screen">
+    <h2 class="screen-heading">🛠 成长 · THE WORKSHOP</h2>
+    <p class="screen-sub" id="workshop-meta"></p>
+    <div id="workshop-grid"></div>
+    <div class="workshop-foot">
+      <button id="workshop-back-btn" class="big-btn">← &nbsp;BACK</button>
+      <button id="save-reset-btn" class="danger-btn">Reset save</button>
+    </div>
+    <p class="hint">Stardust is earned every run — kills, elites, score and the King all pay. Growth is forever.</p>
   </section>
 
   <!-- Level-up choices -->

@@ -87,12 +87,13 @@ export function registerKill(game, enemy) {
   if (hasRelic(game, 'bloodchalice')) {
     const relics = game.relics;
     relics.killTrack++;
-    if (relics.killTrack >= 10) {
-      relics.killTrack -= 10;
+    if (relics.killTrack >= 8) {
+      relics.killTrack -= 8;
       const player = game.player;
       if (player.alive && player.hp < player.maxHp) {
-        player.hp = Math.min(player.maxHp, player.hp + 2);
-        spawnFloatText(game, player.x, player.y - player.radius - 10, '+2 HP', COLORS.shard, 13);
+        const heal = 4 + Math.floor(player.maxHp * 0.02);
+        player.hp = Math.min(player.maxHp, player.hp + heal);
+        spawnFloatText(game, player.x, player.y - player.radius - 10, `+${heal} HP`, COLORS.shard, 13);
       }
     }
   }
