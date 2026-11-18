@@ -100,6 +100,19 @@ export function hideBanner(ui) {
   ui.banner.classList.remove('visible');
 }
 
+// One emblem per blessing, so a choice reads before its words do.
+const CHOICE_ICONS = {
+  starbolts: '🌠',
+  orbitblades: '🗡️',
+  novapulse: '💥',
+  chainspark: '⚡',
+  swift: '💨',
+  vitality: '❤️',
+  lodestone: '🧲',
+  power: '🔥',
+  dashflow: '🌪️',
+};
+
 // Build the three upgrade cards. Picking is by click here, or by the 1/2/3 keys through
 // pickLevelUpChoice, which main.js calls; both paths run the same callback.
 export function showLevelUp(ui, choices, onPick) {
@@ -108,8 +121,9 @@ export function showLevelUp(ui, choices, onPick) {
   ui.levelupCards.innerHTML = '';
   choices.forEach((choice, i) => {
     const card = document.createElement('button');
-    card.className = 'card';
+    card.className = `card ${choice.kind}`;
     card.innerHTML = `
+      <span class="card-icon">${CHOICE_ICONS[choice.key] ?? '✦'}</span>
       <span class="card-tag">${choice.tag}</span>
       <span class="card-title">${choice.title}</span>
       <span class="card-desc">${choice.desc}</span>
@@ -129,7 +143,7 @@ export function pickLevelUpChoice(ui, index) {
 }
 
 export function showEnd(ui, victory, game) {
-  ui.endTitle.textContent = victory ? '🌅 DAWN BREAKS' : '💀 THE LIGHT FALLS';
+  ui.endTitle.textContent = victory ? '☀ DAWN BREAKS' : '☠ THE LIGHT FALLS';
   ui.endTitle.className = victory ? 'victory' : 'defeat';
   ui.endSub.textContent = victory
     ? 'The Hollow King is unmade and the arena greets the dawn. The wardens sing your name.'

@@ -2,8 +2,9 @@
 // shrinks and the mix hardens as the Dawn Timer runs down; elites arrive on a drumbeat and
 // the Hollow King makes his entrance at four minutes, heralded six seconds ahead.
 
-import { ENEMIES, BOSS_TIME, BOSS_WARN_TIME, ELITE_EVERY, ELITE_FIRST, spawnInterval, aliveCap } from './config.js';
+import { COLORS, ENEMIES, BOSS_TIME, BOSS_WARN_TIME, ELITE_EVERY, ELITE_FIRST, spawnInterval, aliveCap } from './config.js';
 import { spawnEnemy } from './entities.js';
+import { spawnRing, spawnBurst, spawnFlash, addShake } from './particles.js';
 import { sfxBossWarn } from './audio.js';
 
 export function makeDirector() {
@@ -61,6 +62,11 @@ export function updateDirector(game, dt) {
     const a = game.arena;
     game.boss = spawnEnemy(game, 'boss', a.x + a.w / 2, a.y + 84);
     game.bossSpawned = true;
+    // The King does not slip in quietly: a ring of dread, a burst of embers, a shudder.
+    spawnRing(game, game.boss.x, game.boss.y, COLORS.boss, 230, 6);
+    spawnBurst(game, game.boss.x, game.boss.y, COLORS.boss, 30, 280);
+    spawnFlash(game, game.boss.x, game.boss.y, COLORS.boss, 110, 0.35);
+    addShake(game, 9);
   }
 
   // Elites: bigger, tougher, and they burst into large shards when they fall.

@@ -2,11 +2,11 @@
 // light trail, floating damage numbers, expanding nova rings, chain-lightning polylines and
 // screen shake. This module owns the data and its update; render.js does the drawing.
 
-const MAX_PARTICLES = 420;
+const MAX_PARTICLES = 560;
 const particlePool = [];
 
 function takeParticle() {
-  return particlePool.pop() ?? { x: 0, y: 0, vx: 0, vy: 0, life: 0, maxLife: 1, size: 2, color: '#fff', drag: 1, gravity: 0 };
+  return particlePool.pop() ?? { x: 0, y: 0, vx: 0, vy: 0, life: 0, maxLife: 1, size: 2, color: '#fff', drag: 1, gravity: 0, add: false, glow: false };
 }
 
 export function initEffects(game) {
@@ -31,8 +31,31 @@ export function spawnBurst(game, x, y, color, count, speed) {
     p.color = color;
     p.drag = 3.2;
     p.gravity = 0;
+    // Bursts burn: most sparks render additively, and the larger ones carry a soft glow
+    // halo (drawn from a cached sprite in render.js, so this stays cheap).
+    p.add = true;
+    p.glow = p.size > 3.1;
+    p.flash = false;
     game.particles.push(p);
   }
+}
+
+// A single bright flash of light — muzzle flashes, nova ignitions, the King's death.
+// Rendered as one additive glow sprite that swells and dies almost at once.
+export function spawnFlash(game, x, y, color, size = 30, life = 0.14) {
+  if (game.particles.length >= MAX_PARTICLES) return;
+  const p = takeParticle();
+  p.x = x; p.y = y;
+  p.vx = 0; p.vy = 0;
+  p.maxLife = p.life = life;
+  p.size = size;
+  p.color = color;
+  p.drag = 0;
+  p.gravity = 0;
+  p.add = true;
+  p.glow = true;
+  p.flash = true;
+  game.particles.push(p);
 }
 
 export function spawnTrailPuff(game, x, y, color) {
@@ -47,6 +70,9 @@ export function spawnTrailPuff(game, x, y, color) {
   p.color = color;
   p.drag = 1.5;
   p.gravity = 0;
+  p.add = false;
+  p.glow = false;
+  p.flash = false;
   game.particles.push(p);
 }
 

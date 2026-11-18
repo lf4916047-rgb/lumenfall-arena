@@ -4,7 +4,7 @@
 
 import { COLORS, WEAPONS, WEAPON_MAX_LEVEL } from './config.js';
 import { fireBolt, nearestEnemy, damageEnemy } from './entities.js';
-import { spawnRing, spawnZap, spawnBurst } from './particles.js';
+import { spawnRing, spawnZap, spawnBurst, spawnFlash } from './particles.js';
 import { sfxShoot, sfxNova, sfxZap } from './audio.js';
 
 export function makeLoadout() {
@@ -63,6 +63,7 @@ function updateStarBolts(game, dt, weapon, player) {
     // Star bolts steer; entities.js reads this off the bolt.
     game.bolts[game.bolts.length - 1].steer = cfg.steer;
   }
+  spawnFlash(game, player.x, player.y, COLORS.bolt, 20, 0.1);
   sfxShoot();
 }
 
@@ -105,6 +106,7 @@ function updateNovaPulse(game, dt, weapon, player) {
   weapon.timer = cfg.interval[li];
   const radius = cfg.radius[li];
   spawnRing(game, player.x, player.y, COLORS.nova, radius, 4);
+  spawnFlash(game, player.x, player.y, COLORS.nova, radius * 0.55, 0.22);
   sfxNova();
   for (const enemy of [...game.enemies]) {
     if (enemy.dead) continue;
@@ -143,6 +145,7 @@ function updateChainSpark(game, dt, weapon, player) {
     points.push({ x: current.x, y: current.y });
     damageEnemy(game, current, dmg(game, cfg.damage[li]) * falloff);
     spawnBurst(game, current.x, current.y, COLORS.spark, 4, 120);
+    if (hop === 0) spawnFlash(game, current.x, current.y, COLORS.spark, 26, 0.12);
     falloff *= 0.78;
     let next = null;
     let bestD2 = cfg.linkRange * cfg.linkRange;

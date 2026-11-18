@@ -8,7 +8,7 @@
 import { RUN_DURATION, xpForLevel } from './config.js';
 import * as audio from './audio.js';
 import { initInput, wasPressed, anyPressed, endFrame, onFirstGesture } from './input.js';
-import { makePlayer, updatePlayer, updateEnemies, updateProjectiles, updateShards } from './entities.js';
+import { makePlayer, updatePlayer, updateEnemies, updateProjectiles, updateShards, spawnEnemy, damageEnemy } from './entities.js';
 import { makeLoadout, updateWeapons, buildChoices } from './weapons.js';
 import { makeDirector, updateDirector } from './director.js';
 import { initEffects, updateEffects, spawnTrailPuff } from './particles.js';
@@ -52,6 +52,10 @@ const game = {
   zaps: [],
 };
 window.__lumenfall = game;
+// Playtest hooks: the maker's own verification script stages late-run scenes (the King's
+// arrival, the dawn victory) by spawning and striking foes through these two handles.
+game.spawnEnemy = spawnEnemy;
+game.damageEnemy = damageEnemy;
 
 const ui = buildUI({
   onStart: () => startRun(),
@@ -116,6 +120,11 @@ function toggleMute() {
 
 function endRun(victory) {
   game.state = victory ? 'victory' : 'gameover';
+  // The King's herald must not outlive the run: a warden who falls inside the warning
+  // window would otherwise leave the banner hanging over the end screen.
+  game.bossWarning = 0;
+  game.bannerShown = false;
+  hideBanner(ui);
   if (victory) audio.sfxVictory();
   else audio.sfxDefeat();
   showEnd(ui, victory, game);

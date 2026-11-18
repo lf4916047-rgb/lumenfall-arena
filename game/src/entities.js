@@ -4,7 +4,7 @@
 
 import { COLORS, ENEMIES, PLAYER, enemyHpScale } from './config.js';
 import { moveVector, isDown } from './input.js';
-import { spawnBurst, spawnTrailPuff, spawnFloatText, addShake } from './particles.js';
+import { spawnBurst, spawnTrailPuff, spawnFloatText, spawnFlash, spawnRing, addShake } from './particles.js';
 import { sfxDash, sfxHurt, sfxPickup } from './audio.js';
 
 const TAU = Math.PI * 2;
@@ -30,6 +30,7 @@ export function makePlayer(x, y) {
     dashT: 0, dashCd: 0, dashDirX: 1, dashDirY: 0,
     iframes: 0,
     alive: true,
+    trail: [],
   };
 }
 
@@ -92,7 +93,15 @@ export function damageEnemy(game, enemy, amount, knockX = 0, knockY = 0) {
   enemy.flash = 0.09;
   enemy.kx += knockX;
   enemy.ky += knockY;
-  spawnFloatText(game, enemy.x + rand(-6, 6), enemy.y - enemy.radius - 4, String(Math.round(amount)), COLORS.text);
+  // Heavy hits shout: bigger, gilded numbers for the blows that matter.
+  const big = amount >= 30;
+  const mid = amount >= 18;
+  spawnFloatText(
+    game, enemy.x + rand(-6, 6), enemy.y - enemy.radius - 4,
+    String(Math.round(amount)),
+    big ? COLORS.bossCrown : COLORS.text,
+    big ? 18 : mid ? 15 : 13,
+  );
   if (enemy.hp > 0) return false;
   enemy.dead = true;
   game.kills++;
@@ -106,6 +115,9 @@ export function damageEnemy(game, enemy, amount, knockX = 0, knockY = 0) {
     game.bossDefeated = true;
     addShake(game, 14);
     spawnBurst(game, enemy.x, enemy.y, COLORS.bossCrown, 60, 340);
+    spawnBurst(game, enemy.x, enemy.y, COLORS.boss, 40, 260);
+    spawnFlash(game, enemy.x, enemy.y, COLORS.bossCrown, 120, 0.4);
+    spawnRing(game, enemy.x, enemy.y, COLORS.bossCrown, 260, 6);
   }
   return true;
 }
@@ -118,6 +130,7 @@ export function hurtPlayer(game, amount) {
   addShake(game, 7);
   sfxHurt();
   spawnBurst(game, player.x, player.y, COLORS.hp, 10, 200);
+  spawnFlash(game, player.x, player.y, COLORS.hp, 34, 0.16);
   if (player.hp <= 0) {
     player.hp = 0;
     player.alive = false;
@@ -163,6 +176,14 @@ export function updatePlayer(game, dt) {
   player.x += player.vx * dt;
   player.y += player.vy * dt;
   clampToArena(game, player);
+
+  // Afterimages: render.js fades these ghosts by age, hottest while dashing.
+  if (move.x !== 0 || move.y !== 0 || player.dashT > 0) {
+    player.trail.unshift({ x: player.x, y: player.y, t: game.time, dash: player.dashT > 0 });
+    if (player.trail.length > 18) player.trail.length = 18;
+  } else if (player.trail.length > 0) {
+    player.trail = player.trail.filter((ghost) => game.time - ghost.t < 0.3);
+  }
 
   // The warden leaves a soft trail of light while moving.
   if ((move.x !== 0 || move.y !== 0 || player.dashT > 0) && Math.random() < 0.6) {
