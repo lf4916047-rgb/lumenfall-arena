@@ -1,10 +1,15 @@
-// Lumenfall Arena — rendering: everything the canvas shows. The night is layered —
-// a baked nebula-and-starfield plate, twinkling bright stars — and everything that
-// burns (the warden, bolts, shards, the Hollow King) is composited additively so
-// the arena feels lit, not painted. The creatures themselves are pre-rendered
-// sprites (sprites.js bakes them once at load): a hooded Star-warden, fuzzy void
-// moths, bat-winged gloomwings, horned hexshell hulks, the floating Watcher, and
-// the tall robed Hollow King — the frame loop just blits the current frame.
+// Lumenfall Arena — rendering: everything the canvas shows. The arena is a place:
+// a ruined temple court under a nebula sky, baked once into a plate — clustered
+// nebula clouds, a dense starfield, a ringed planet in the margin sky, stone-tile
+// floors with cracks and wear over a radial mosaic, a glowing summoning circle at
+// the court's heart (its outer glyph ring turns slowly on a plate of its own), a
+// dusk horizon of spires and broken pillars along the far wall, headless statues
+// and a fallen column at the edges. Everything that burns (the warden, bolts,
+// shards, the Hollow King) is composited additively over that plate so the arena
+// feels lit, not painted. The creatures themselves are pre-rendered sprites
+// (sprites.js bakes them once at load): a hooded Star-warden, fuzzy void moths,
+// bat-winged gloomwings, horned hexshell hulks, the floating Watcher, and the
+// tall robed Hollow King — the frame loop just blits the current frame.
 
 import { COLORS } from './config.js';
 import { getTouchUI } from './input.js';
@@ -20,6 +25,7 @@ const TAU = Math.PI * 2;
 
 let bgCanvas = null;
 let dangerCanvas = null;
+let ringCanvas = null;
 let twinkles = [];
 
 function makeCanvas(width, height) {
@@ -36,6 +42,130 @@ function parseColor(color) {
   }
   const parts = color.match(/[\d.]+/g).map(Number);
   return [parts[0], parts[1], parts[2]];
+}
+
+// --- Background bake helpers ----------------------------------------------------
+// Everything in this section runs once per resize, into the plate; nothing here
+// is paid for per frame.
+
+// A woven star polygon: connect every `step`-th of `points` vertices until the
+// path closes. {7/2} and {7/3} overlaid read as one intricate heptagram.
+function starPath(c, cx, cy, r, points, step, rot) {
+  c.beginPath();
+  for (let i = 0; i <= points; i++) {
+    const idx = (i * step) % points;
+    const ang = rot + (idx / points) * TAU;
+    const x = cx + Math.cos(ang) * r;
+    const y = cy + Math.sin(ang) * r;
+    if (i === 0) c.moveTo(x, y);
+    else c.lineTo(x, y);
+  }
+  c.closePath();
+}
+
+// One rune glyph, centred on the origin with its stem vertical; `size` is the
+// half-height. Eight stroke variants — stems, branches, diamonds, hooks — so a
+// ring of them reads as writing, not decoration. The caller sets stroke style
+// and transforms (glyphs around a ring are rotated to stand radially).
+function drawRune(c, size, variant) {
+  const s = size;
+  c.beginPath();
+  c.moveTo(0, -s);
+  c.lineTo(0, s);
+  switch (variant % 8) {
+    case 0:
+      c.moveTo(0, -s * 0.55); c.lineTo(s * 0.62, -s);
+      c.moveTo(0, -s * 0.05); c.lineTo(s * 0.62, -s * 0.5);
+      break;
+    case 1:
+      c.moveTo(0, s * 0.55); c.lineTo(s * 0.62, s);
+      c.moveTo(0, s * 0.05); c.lineTo(s * 0.62, s * 0.5);
+      break;
+    case 2:
+      c.moveTo(0, -s); c.lineTo(s * 0.55, -s * 0.45);
+      c.lineTo(0, s * 0.1); c.lineTo(-s * 0.55, -s * 0.45);
+      c.closePath();
+      break;
+    case 3:
+      c.moveTo(-s * 0.5, -s * 0.3); c.lineTo(s * 0.5, -s * 0.3);
+      c.moveTo(0, s * 0.2); c.lineTo(s * 0.6, s * 0.7);
+      break;
+    case 4:
+      c.moveTo(-s * 0.5, -s); c.lineTo(s * 0.5, 0);
+      c.moveTo(s * 0.5, -s); c.lineTo(-s * 0.5, 0);
+      break;
+    case 5:
+      c.moveTo(0, -s); c.lineTo(s * 0.6, -s * 0.2); c.lineTo(0, s * 0.6);
+      break;
+    case 6:
+      c.moveTo(s * 0.45, -s); c.lineTo(s * 0.45, s);
+      c.moveTo(0, -s * 0.4); c.lineTo(s * 0.45, -s * 0.4);
+      break;
+    default:
+      c.moveTo(0, -s * 0.2); c.lineTo(s * 0.55, -s * 0.75);
+      c.moveTo(0, s * 0.35); c.lineTo(s * 0.55, s * 0.9);
+      break;
+  }
+  c.stroke();
+}
+
+// A headless warden-statue on its plinth, standing on the floor at (x, y) —
+// plinth base at y, figure rising `h` above it. Pure silhouette with a breath
+// of rim light down one edge; the swarm walks over its shadow unbothered.
+function bakeStatue(c, x, y, h, broken) {
+  c.fillStyle = '#070922';
+  c.fillRect(x - 17, y - 8, 34, 8);
+  c.fillStyle = 'rgba(150, 162, 255, 0.20)';
+  c.fillRect(x - 17, y - 8, 34, 1.4);
+  const top = y - 8 - h;
+  c.fillStyle = '#05061a';
+  c.beginPath();
+  c.moveTo(x - 8, top + 14);
+  c.lineTo(x + 8, top + 14);
+  c.lineTo(x + 14, y - 8);
+  c.lineTo(x - 14, y - 8);
+  c.closePath();
+  c.fill();
+  c.fillRect(x - 10, top + 8, 20, 8);            // shoulders
+  c.fillRect(x - 3.5, top + (broken ? 7 : 3), 7, 7); // the neck, ending in air
+  c.fillRect(x + 8, top + 16, 5, 14);            // one arm's stump
+  if (!broken) c.fillRect(x - 13, top + 16, 5, 18); // the other arm, hanging
+  c.fillStyle = 'rgba(150, 162, 255, 0.26)';
+  c.fillRect(x - 8.5, top + 14, 1.3, h - 14);    // rim light
+}
+
+// A toppled column by its plinth: drum segments still strung along the shaft,
+// one drum rolled loose. Dark stone, a pale line where the night catches it.
+function bakeFallenColumn(c, x, y) {
+  c.fillStyle = '#070922';
+  c.fillRect(x - 30, y - 11, 32, 22);
+  c.fillStyle = 'rgba(150, 162, 255, 0.18)';
+  c.fillRect(x - 30, y - 11, 32, 1.4);
+  c.fillStyle = '#060818';
+  c.beginPath();
+  c.roundRect(x + 8, y - 8, 76, 16, 8);
+  c.fill();
+  c.strokeStyle = 'rgba(150, 162, 255, 0.13)';
+  c.lineWidth = 1;
+  for (const dx of [27, 46, 65]) {
+    c.beginPath();
+    c.moveTo(x + dx, y - 7);
+    c.lineTo(x + dx, y + 7);
+    c.stroke();
+  }
+  c.strokeStyle = 'rgba(170, 182, 255, 0.22)';
+  c.beginPath();
+  c.moveTo(x + 14, y - 6.5);
+  c.lineTo(x + 78, y - 6.5);
+  c.stroke();
+  c.fillStyle = '#060818';
+  c.beginPath();
+  c.arc(x + 102, y + 4, 9, 0, TAU);
+  c.fill();
+  c.strokeStyle = 'rgba(170, 182, 255, 0.20)';
+  c.beginPath();
+  c.arc(x + 102, y + 4, 9, Math.PI * 1.05, Math.PI * 1.65);
+  c.stroke();
 }
 
 const glowCache = new Map();
@@ -67,7 +197,8 @@ function drawGlow(ctx, x, y, radius, color, alpha) {
 }
 
 export function initBackground(width, height, arena) {
-  // The baked plate: deep space, five nebula washes, and two static star layers.
+  // The baked plate: deep space, clustered nebula clouds, a ringed planet, and
+  // three static star layers. The temple court bakes in further below.
   bgCanvas = makeCanvas(width, height);
   const c = bgCanvas.getContext('2d');
   c.fillStyle = COLORS.bgDeep;
@@ -78,26 +209,86 @@ export function initBackground(width, height, arena) {
   c.fillStyle = centre;
   c.fillRect(0, 0, width, height);
 
+  // Nebula clouds with real presence: each wash is a cluster of overlapping
+  // blobs, so the colour pools and thins like cloud instead of reading as one
+  // perfect circle. Violet, teal and magenta over the deep indigo.
   const nebulae = [
-    { x: 0.22, y: 0.26, r: 0.46, color: '#3b2a8f', alpha: 0.20 },
-    { x: 0.82, y: 0.18, r: 0.38, color: '#5c1440', alpha: 0.16 },
-    { x: 0.72, y: 0.82, r: 0.50, color: '#0d4a5c', alpha: 0.15 },
-    { x: 0.12, y: 0.86, r: 0.34, color: '#27408f', alpha: 0.14 },
-    { x: 0.52, y: 0.52, r: 0.30, color: '#6e1d4e', alpha: 0.10 },
+    { x: 0.20, y: 0.22, r: 0.54, color: '#4a2a9f', alpha: 0.30 },
+    { x: 0.84, y: 0.16, r: 0.46, color: '#7e1d5e', alpha: 0.27 },
+    { x: 0.74, y: 0.84, r: 0.58, color: '#0d5a6e', alpha: 0.25 },
+    { x: 0.10, y: 0.88, r: 0.42, color: '#27408f', alpha: 0.23 },
+    { x: 0.55, y: 0.45, r: 0.38, color: '#5c1440', alpha: 0.17 },
+    { x: 0.44, y: 0.06, r: 0.32, color: '#2a6e8f', alpha: 0.15 },
   ];
   for (const n of nebulae) {
     const [r, g, b] = parseColor(n.color);
-    const rad = Math.max(width, height) * n.r;
-    const grad = c.createRadialGradient(width * n.x, height * n.y, 4, width * n.x, height * n.y, rad);
-    grad.addColorStop(0, `rgba(${r}, ${g}, ${b}, ${n.alpha})`);
-    grad.addColorStop(1, `rgba(${r}, ${g}, ${b}, 0)`);
-    c.fillStyle = grad;
-    c.fillRect(0, 0, width, height);
+    const R = Math.max(width, height) * n.r;
+    for (let i = 0; i < 6; i++) {
+      const bx = width * n.x + (Math.random() - 0.5) * R * 0.72;
+      const by = height * n.y + (Math.random() - 0.5) * R * 0.72;
+      const br = R * (0.34 + Math.random() * 0.38);
+      const grad = c.createRadialGradient(bx, by, 4, bx, by, br);
+      grad.addColorStop(0, `rgba(${r}, ${g}, ${b}, ${n.alpha * (0.45 + Math.random() * 0.5)})`);
+      grad.addColorStop(1, `rgba(${r}, ${g}, ${b}, 0)`);
+      c.fillStyle = grad;
+      c.fillRect(bx - br, by - br, br * 2, br * 2);
+    }
+  }
+
+  // A ringed planet hangs in the top margin's sky, faint enough to sit behind
+  // the HUD. Back ring, disc, a night-side shadow, then the ring's front arc.
+  {
+    const px = width * 0.66;
+    const py = 40;
+    const pr = 15;
+    const halo = c.createRadialGradient(px, py, 2, px, py, pr * 3.6);
+    halo.addColorStop(0, 'rgba(150, 170, 255, 0.16)');
+    halo.addColorStop(1, 'rgba(150, 170, 255, 0)');
+    c.fillStyle = halo;
+    c.fillRect(px - pr * 3.6, py - pr * 3.6, pr * 7.2, pr * 7.2);
+    c.save();
+    c.translate(px, py);
+    c.rotate(-0.32);
+    c.scale(1, 0.34);
+    c.strokeStyle = 'rgba(178, 190, 255, 0.34)';
+    c.lineWidth = 2.4;
+    c.beginPath();
+    c.arc(0, 0, pr * 1.95, 0, TAU);
+    c.stroke();
+    c.restore();
+    c.fillStyle = 'rgba(122, 134, 204, 0.85)';
+    c.beginPath();
+    c.arc(px, py, pr, 0, TAU);
+    c.fill();
+    c.save();
+    c.beginPath();
+    c.arc(px, py, pr, 0, TAU);
+    c.clip();
+    c.fillStyle = 'rgba(190, 200, 255, 0.30)';
+    c.beginPath();
+    c.arc(px - pr * 0.34, py - pr * 0.38, pr * 0.55, 0, TAU);
+    c.fill();
+    c.fillStyle = 'rgba(5, 6, 24, 0.38)';
+    c.beginPath();
+    c.arc(px + pr * 0.42, py + pr * 0.30, pr * 0.92, 0, TAU);
+    c.fill();
+    c.restore();
+    c.save();
+    c.translate(px, py);
+    c.rotate(-0.32);
+    c.scale(1, 0.34);
+    c.strokeStyle = 'rgba(198, 208, 255, 0.5)';
+    c.lineWidth = 2.4;
+    c.beginPath();
+    c.arc(0, 0, pr * 1.95, 0.15, Math.PI - 0.15);
+    c.stroke();
+    c.restore();
   }
 
   const starLayers = [
-    { count: 150, rMin: 0.4, rMax: 1.0, alpha: 0.5, tint: '#8f9be0' },
-    { count: 80, rMin: 0.8, rMax: 1.5, alpha: 0.75, tint: '#aab4ff' },
+    { count: 320, rMin: 0.4, rMax: 1.0, alpha: 0.5, tint: '#8f9be0' },
+    { count: 170, rMin: 0.8, rMax: 1.5, alpha: 0.75, tint: '#aab4ff' },
+    { count: 46, rMin: 1.2, rMax: 1.9, alpha: 0.9, tint: '#e8ecff' },
   ];
   for (const layer of starLayers) {
     c.fillStyle = layer.tint;
@@ -113,7 +304,7 @@ export function initBackground(width, height, arena) {
   // The bright foreground stars are live so they can twinkle and sparkle.
   twinkles = [];
   const tints = ['#dfe6ff', '#ffe9b0', '#9be7ff', '#ffc4d6'];
-  for (let i = 0; i < 36; i++) {
+  for (let i = 0; i < 46; i++) {
     twinkles.push({
       x: Math.random() * width,
       y: Math.random() * height,
@@ -124,41 +315,273 @@ export function initBackground(width, height, arena) {
     });
   }
 
-  // The arena's static dressing bakes into the plate too — its fill gradient, the
-  // pool of light, the grid, the burning border. Per frame this all used to cost
-  // two full-arena gradient fills and a shadowBlur stroke; baked, it costs nothing.
-  // Only the turning rune circles stay live (they are drawn in drawArena).
+  // The arena's static dressing bakes into the plate too — the whole temple
+  // court: stone floor, mosaic, summoning circle, ruins, horizon, the burning
+  // border. Per frame this all used to cost gradient fills and a shadowBlur
+  // stroke; baked, it costs nothing. Only the turning rings stay live (they
+  // are drawn in drawArena).
   if (arena) {
     const a = arena;
-    const fill = c.createLinearGradient(0, a.y, 0, a.y + a.h);
-    fill.addColorStop(0, '#0e1132');
-    fill.addColorStop(0.5, COLORS.arenaFill);
-    fill.addColorStop(1, '#080a22');
-    c.fillStyle = fill;
-    c.fillRect(a.x, a.y, a.w, a.h);
     const cx = a.x + a.w / 2;
     const cy = a.y + a.h / 2;
-    const pool = c.createRadialGradient(cx, cy, 10, cx, cy, Math.min(a.w, a.h) * 0.52);
-    pool.addColorStop(0, 'rgba(52, 64, 150, 0.20)');
-    pool.addColorStop(1, 'rgba(52, 64, 150, 0)');
+    const u = Math.min(a.w, a.h);
+
+    // --- Floor base: stone-dark, a breath translucent so the nebula tints it.
+    const fill = c.createLinearGradient(0, a.y, 0, a.y + a.h);
+    fill.addColorStop(0, 'rgba(15, 18, 54, 0.94)');
+    fill.addColorStop(0.5, 'rgba(11, 14, 44, 0.96)');
+    fill.addColorStop(1, 'rgba(7, 8, 28, 0.98)');
+    c.fillStyle = fill;
+    c.fillRect(a.x, a.y, a.w, a.h);
+
+    // --- Radial mosaic: broad bands and wedges fanning from the court's heart.
+    c.save();
+    c.beginPath();
+    c.rect(a.x, a.y, a.w, a.h);
+    c.clip();
+    const wedges = 28;
+    c.fillStyle = 'rgba(130, 145, 255, 0.05)';
+    for (let i = 0; i < wedges; i += 2) {
+      c.beginPath();
+      c.moveTo(cx, cy);
+      c.arc(cx, cy, u * 0.62, (i / wedges) * TAU, ((i + 1) / wedges) * TAU);
+      c.closePath();
+      c.fill();
+    }
+    c.strokeStyle = 'rgba(150, 162, 255, 0.07)';
+    for (const rr of [0.22, 0.37, 0.52]) {
+      c.lineWidth = u * 0.028;
+      c.beginPath();
+      c.arc(cx, cy, u * rr, 0, TAU);
+      c.stroke();
+    }
+    c.restore();
+
+    // --- Stone tiles: every tile its own tone — violet-worn, slate, lifted,
+    // sunk — laid over the mosaic, with dark grout in the seams.
+    const tile = 46;
+    for (let ty = a.y; ty < a.y + a.h; ty += tile) {
+      for (let tx = a.x; tx < a.x + a.w; tx += tile) {
+        const v = Math.random();
+        if (v < 0.12) c.fillStyle = 'rgba(64, 58, 120, 0.16)';
+        else if (v < 0.24) c.fillStyle = 'rgba(24, 40, 84, 0.20)';
+        else if (v < 0.55) c.fillStyle = 'rgba(88, 96, 190, 0.07)';
+        else c.fillStyle = 'rgba(0, 0, 10, 0.10)';
+        c.fillRect(tx, ty, Math.min(tile, a.x + a.w - tx), Math.min(tile, a.y + a.h - ty));
+      }
+    }
+    c.strokeStyle = 'rgba(3, 4, 16, 0.5)';
+    c.lineWidth = 1.5;
+    c.beginPath();
+    for (let x = a.x + tile; x < a.x + a.w; x += tile) { c.moveTo(x, a.y); c.lineTo(x, a.y + a.h); }
+    for (let y = a.y + tile; y < a.y + a.h; y += tile) { c.moveTo(a.x, y); c.lineTo(a.x + a.w, y); }
+    c.stroke();
+
+    // --- Cracks wander tile to tile; worn patches pool dark or shine faintly.
+    c.strokeStyle = 'rgba(2, 3, 12, 0.45)';
+    for (let i = 0; i < 26; i++) {
+      let x = a.x + Math.random() * a.w;
+      let y = a.y + Math.random() * a.h;
+      let ang = Math.random() * TAU;
+      c.lineWidth = 1 + Math.random();
+      c.beginPath();
+      c.moveTo(x, y);
+      const segs = 3 + Math.floor(Math.random() * 4);
+      for (let s = 0; s < segs; s++) {
+        ang += (Math.random() - 0.5) * 1.1;
+        const len = 8 + Math.random() * 16;
+        x += Math.cos(ang) * len;
+        y += Math.sin(ang) * len;
+        c.lineTo(x, y);
+      }
+      c.stroke();
+    }
+    for (let i = 0; i < 16; i++) {
+      const x = a.x + Math.random() * a.w;
+      const y = a.y + Math.random() * a.h;
+      const r = 30 + Math.random() * 80;
+      const g = c.createRadialGradient(x, y, 2, x, y, r);
+      g.addColorStop(0, Math.random() < 0.7 ? 'rgba(0, 0, 8, 0.13)' : 'rgba(190, 198, 255, 0.05)');
+      g.addColorStop(1, 'rgba(0, 0, 0, 0)');
+      c.fillStyle = g;
+      c.fillRect(x - r, y - r, r * 2, r * 2);
+    }
+
+    // --- The pool of light at the court's heart.
+    const pool = c.createRadialGradient(cx, cy, 10, cx, cy, u * 0.55);
+    pool.addColorStop(0, 'rgba(70, 76, 160, 0.16)');
+    pool.addColorStop(1, 'rgba(70, 76, 160, 0)');
     c.fillStyle = pool;
     c.fillRect(a.x, a.y, a.w, a.h);
-    c.fillStyle = 'rgba(140, 155, 255, 0.10)';
-    for (const [dx, dy] of [[0, -1], [0, 1], [-1, 0], [1, 0]]) {
-      const px = cx + dx * Math.min(a.w, a.h) * 0.36;
-      const py = cy + dy * Math.min(a.w, a.h) * 0.36;
+
+    // --- The summoning circle, baked: an amber-and-teal glow, a woven
+    // heptagram, rune glyphs standing between the inner rings, tick marks at
+    // the rim. Its outermost glyph ring is NOT here — it turns, slowly, on a
+    // separate plate drawn in drawArena.
+    const wash = c.createRadialGradient(cx, cy, 4, cx, cy, u * 0.36);
+    wash.addColorStop(0, 'rgba(255, 179, 64, 0.10)');
+    wash.addColorStop(0.55, 'rgba(255, 179, 64, 0.045)');
+    wash.addColorStop(0.8, 'rgba(46, 230, 200, 0.05)');
+    wash.addColorStop(1, 'rgba(46, 230, 200, 0)');
+    c.fillStyle = wash;
+    c.fillRect(cx - u * 0.36, cy - u * 0.36, u * 0.72, u * 0.72);
+    starPath(c, cx, cy, u * 0.165, 7, 2, -Math.PI / 2);
+    c.strokeStyle = 'rgba(255, 196, 110, 0.40)';
+    c.lineWidth = 1.6;
+    c.stroke();
+    starPath(c, cx, cy, u * 0.165, 7, 3, -Math.PI / 2);
+    c.strokeStyle = 'rgba(255, 196, 110, 0.26)';
+    c.stroke();
+    const ring = (r, style, w) => {
+      c.strokeStyle = style;
+      c.lineWidth = w;
+      c.beginPath();
+      c.arc(cx, cy, r, 0, TAU);
+      c.stroke();
+    };
+    ring(u * 0.175, 'rgba(46, 230, 200, 0.50)', 2);
+    ring(u * 0.185, 'rgba(46, 230, 200, 0.22)', 1);
+    ring(u * 0.245, 'rgba(255, 196, 110, 0.42)', 2.5);
+    ring(u * 0.256, 'rgba(255, 196, 110, 0.20)', 1);
+    c.strokeStyle = 'rgba(46, 230, 200, 0.55)';
+    c.lineWidth = 1.4;
+    for (let i = 0; i < 14; i++) {
+      const ang = (i / 14) * TAU;
       c.save();
-      c.translate(px, py);
-      c.rotate(Math.PI / 4);
-      c.fillRect(-6, -6, 12, 12);
+      c.translate(cx + Math.cos(ang) * u * 0.22, cy + Math.sin(ang) * u * 0.22);
+      c.rotate(ang + Math.PI / 2);
+      drawRune(c, u * 0.011, i * 5 + 2);
       c.restore();
     }
-    c.strokeStyle = COLORS.gridLine;
-    c.lineWidth = 1;
+    c.strokeStyle = 'rgba(255, 196, 110, 0.30)';
+    c.lineWidth = 1.4;
     c.beginPath();
-    for (let x = a.x + 48; x < a.x + a.w; x += 48) { c.moveTo(x, a.y); c.lineTo(x, a.y + a.h); }
-    for (let y = a.y + 48; y < a.y + a.h; y += 48) { c.moveTo(a.x, y); c.lineTo(a.x + a.w, y); }
+    for (let i = 0; i < 60; i++) {
+      const ang = (i / 60) * TAU;
+      const r0 = u * 0.272;
+      const r1 = u * (i % 5 === 0 ? 0.288 : 0.282);
+      c.moveTo(cx + Math.cos(ang) * r0, cy + Math.sin(ang) * r0);
+      c.lineTo(cx + Math.cos(ang) * r1, cy + Math.sin(ang) * r1);
+    }
     c.stroke();
+
+    // --- Ruins on the floor: two headless wardens keep the edges, and a
+    // toppled column lies where it fell.
+    bakeStatue(c, a.x + a.w - 52, a.y + a.h * 0.36, 56, false);
+    bakeStatue(c, a.x + 56, a.y + a.h * 0.58, 44, true);
+    bakeFallenColumn(c, a.x + a.w * 0.10, a.y + a.h * 0.82);
+
+    // --- The far wall: a dusk horizon band inside the arena's top edge.
+    // Spires and broken towers silhouette against a violet sky and a pale
+    // moon; a ruined parapet runs the wall's length. All of it dark — the
+    // swarm crosses it as shadow crosses a mural.
+    const hb = Math.min(96, a.h * 0.14);
+    const by = a.y;
+    const sky = c.createLinearGradient(0, by, 0, by + hb);
+    sky.addColorStop(0, '#0d0b30');
+    sky.addColorStop(0.75, '#241543');
+    sky.addColorStop(1, '#31194d');
+    c.fillStyle = sky;
+    c.fillRect(a.x, by, a.w, hb);
+    const mx = a.x + a.w * 0.70;
+    const my = by + hb * 0.40;
+    const mr = hb * 0.30;
+    const halo = c.createRadialGradient(mx, my, 2, mx, my, mr * 3.4);
+    halo.addColorStop(0, 'rgba(214, 222, 255, 0.20)');
+    halo.addColorStop(1, 'rgba(214, 222, 255, 0)');
+    c.fillStyle = halo;
+    c.fillRect(mx - mr * 3.4, my - mr * 3.4, mr * 6.8, mr * 6.8);
+    c.fillStyle = 'rgba(226, 232, 255, 0.92)';
+    c.beginPath();
+    c.arc(mx, my, mr, 0, TAU);
+    c.fill();
+    c.save();
+    c.beginPath();
+    c.arc(mx, my, mr, 0, TAU);
+    c.clip();
+    c.fillStyle = 'rgba(168, 178, 224, 0.35)';
+    for (const [ox, oy, orr] of [[-0.3, -0.15, 0.22], [0.25, 0.3, 0.16], [0.05, -0.42, 0.12]]) {
+      c.beginPath();
+      c.arc(mx + ox * mr, my + oy * mr, orr * mr, 0, TAU);
+      c.fill();
+    }
+    c.restore();
+    // Far spires: a jagged roofline of mountains and broken towers.
+    c.fillStyle = '#0a0c2c';
+    c.beginPath();
+    c.moveTo(a.x, by + hb);
+    let sx = a.x;
+    while (sx < a.x + a.w) {
+      const peakW = 26 + Math.random() * 70;
+      const peakH = hb * (0.25 + Math.random() * 0.5);
+      c.lineTo(sx + peakW * 0.5, by + hb - peakH);
+      c.lineTo(Math.min(sx + peakW, a.x + a.w), by + hb - hb * Math.random() * 0.12);
+      sx += peakW;
+    }
+    c.lineTo(a.x + a.w, by + hb);
+    c.closePath();
+    c.fill();
+    // The parapet: a wall walk with broken battlements, pillars standing on
+    // it, one snapped, an arch fragment reaching from the left, a headless
+    // statue keeping the right.
+    const wy = by + hb - 9;
+    c.fillStyle = '#05061a';
+    c.fillRect(a.x, wy, a.w, 9);
+    for (let bx = a.x + 6; bx < a.x + a.w - 10; bx += 17 + Math.random() * 22) {
+      if (Math.random() < 0.35) continue; // whole merlons are simply gone
+      c.fillRect(bx, wy - 4 - Math.random() * 3, 9, 7);
+    }
+    const pillar = (fx, hgt, snapped) => {
+      const px = a.x + a.w * fx;
+      c.fillRect(px, wy - hgt, 13, hgt);
+      if (!snapped) c.fillRect(px - 2.5, wy - hgt - 4, 18, 4.5);
+      else {
+        c.beginPath();
+        c.moveTo(px, wy - hgt);
+        c.lineTo(px + 6, wy - hgt + 4);
+        c.lineTo(px + 13, wy - hgt + 1);
+        c.lineTo(px + 13, wy - hgt - 3);
+        c.closePath();
+        c.fill();
+      }
+    };
+    pillar(0.08, hb * 0.52, false);
+    pillar(0.30, hb * 0.34, true);
+    pillar(0.88, hb * 0.62, false);
+    // The arch: a thick broken span rising from the parapet at the left.
+    c.strokeStyle = '#05061a';
+    c.lineWidth = 10;
+    c.beginPath();
+    c.arc(a.x + a.w * 0.30, wy + 6, a.w * 0.145, Math.PI * 1.02, Math.PI * 1.52);
+    c.stroke();
+    c.strokeStyle = 'rgba(150, 160, 255, 0.26)';
+    c.lineWidth = 1.6;
+    c.beginPath();
+    c.arc(a.x + a.w * 0.30, wy + 6, a.w * 0.145 + 5.5, Math.PI * 1.04, Math.PI * 1.50);
+    c.stroke();
+    // A small headless statue on the wall walk.
+    c.fillStyle = '#05061a';
+    const stx = a.x + a.w * 0.585;
+    c.fillRect(stx - 8, wy - 4, 16, 4);
+    c.beginPath();
+    c.moveTo(stx - 4.5, wy - 20);
+    c.lineTo(stx + 4.5, wy - 20);
+    c.lineTo(stx + 7.5, wy - 4);
+    c.lineTo(stx - 7.5, wy - 4);
+    c.closePath();
+    c.fill();
+    c.fillRect(stx - 5.5, wy - 25, 11, 5.5);
+    c.fillRect(stx - 2, wy - 28, 4, 3.5);
+    // Rim light along the wall's top edge, then the band fades into the floor.
+    c.fillStyle = 'rgba(158, 170, 255, 0.22)';
+    c.fillRect(a.x, wy - 1, a.w, 1.2);
+    const fade = c.createLinearGradient(0, by + hb, 0, by + hb + 26);
+    fade.addColorStop(0, 'rgba(5, 6, 26, 0.55)');
+    fade.addColorStop(1, 'rgba(5, 6, 26, 0)');
+    c.fillStyle = fade;
+    c.fillRect(a.x, by + hb, a.w, 26);
+
+    // --- The burning border frames the court, as before.
     c.save();
     c.shadowColor = COLORS.arenaLine;
     c.shadowBlur = 14;
@@ -173,12 +596,57 @@ export function initBackground(width, height, arena) {
     c.lineWidth = 3;
     const cl = 26;
     c.beginPath();
-    for (const [px, py, sx, sy] of [[a.x, a.y, 1, 1], [a.x + a.w, a.y, -1, 1], [a.x, a.y + a.h, 1, -1], [a.x + a.w, a.y + a.h, -1, -1]]) {
-      c.moveTo(px + cl * sx, py);
+    for (const [px, py, sx2, sy2] of [[a.x, a.y, 1, 1], [a.x + a.w, a.y, -1, 1], [a.x, a.y + a.h, 1, -1], [a.x + a.w, a.y + a.h, -1, -1]]) {
+      c.moveTo(px + cl * sx2, py);
       c.lineTo(px, py);
-      c.lineTo(px, py + cl * sy);
+      c.lineTo(px, py + cl * sy2);
     }
     c.stroke();
+  }
+
+  // The summoning circle's outer ring rides its own plate: two rings, sixteen
+  // rune glyphs standing between them, diamond sparks on the rim. drawArena
+  // blits it under a slow rotation — one transformed drawImage per frame.
+  ringCanvas = null;
+  if (arena) {
+    const a = arena;
+    const u = Math.min(a.w, a.h);
+    const R = u * 0.335;
+    const half = Math.ceil(R + u * 0.03 + 6);
+    ringCanvas = makeCanvas(half * 2, half * 2);
+    const rc = ringCanvas.getContext('2d');
+    rc.translate(half, half);
+    rc.strokeStyle = 'rgba(255, 196, 110, 0.50)';
+    rc.lineWidth = 2.5;
+    rc.beginPath();
+    rc.arc(0, 0, R, 0, TAU);
+    rc.stroke();
+    rc.strokeStyle = 'rgba(46, 230, 200, 0.30)';
+    rc.lineWidth = 1.2;
+    rc.beginPath();
+    rc.arc(0, 0, R - u * 0.035, 0, TAU);
+    rc.stroke();
+    rc.strokeStyle = 'rgba(255, 214, 140, 0.75)';
+    rc.lineWidth = 1.6;
+    for (let i = 0; i < 16; i++) {
+      const ang = (i / 16) * TAU;
+      rc.save();
+      rc.rotate(ang);
+      rc.translate(R - u * 0.0175, 0);
+      rc.rotate(Math.PI / 2);
+      drawRune(rc, u * 0.013, i * 3 + 1);
+      rc.restore();
+    }
+    rc.fillStyle = 'rgba(255, 214, 140, 0.5)';
+    for (let i = 0; i < 16; i++) {
+      const ang = ((i + 0.5) / 16) * TAU;
+      rc.save();
+      rc.rotate(ang);
+      rc.translate(R + u * 0.012, 0);
+      rc.rotate(Math.PI / 4);
+      rc.fillRect(-1.6, -1.6, 3.2, 3.2);
+      rc.restore();
+    }
   }
 
   // The cool vignette that seats the arena in the dark bakes over the plate;
@@ -303,11 +771,21 @@ function drawBackground(ctx, game, width, height) {
 }
 
 function drawArena(ctx, game) {
-  // Everything static about the arena — fill, pool, grid, border — is baked into
-  // the background plate. What stays live is the warden's turning rune circles.
+  // Everything static about the arena — floor, mosaic, ruins, horizon, border —
+  // is baked into the background plate. What stays live: the summoning circle's
+  // outer glyph ring, turning very slowly on its own plate (one transformed
+  // blit), and one faint dashed circle turning inside it.
   const a = game.arena;
   const cx = a.x + a.w / 2;
   const cy = a.y + a.h / 2;
+  const u = Math.min(a.w, a.h);
+  if (ringCanvas) {
+    ctx.save();
+    ctx.translate(cx, cy);
+    ctx.rotate(game.time * 0.02);
+    ctx.drawImage(ringCanvas, -ringCanvas.width / 2, -ringCanvas.height / 2);
+    ctx.restore();
+  }
   ctx.save();
   ctx.translate(cx, cy);
   ctx.strokeStyle = 'rgba(140, 155, 255, 0.08)';
@@ -315,14 +793,7 @@ function drawArena(ctx, game) {
   ctx.setLineDash([30, 20]);
   ctx.rotate(game.time * 0.045);
   ctx.beginPath();
-  ctx.arc(0, 0, 148, 0, TAU);
-  ctx.stroke();
-  ctx.rotate(-game.time * 0.075);
-  ctx.lineWidth = 3;
-  ctx.setLineDash([5, 15]);
-  ctx.strokeStyle = 'rgba(140, 155, 255, 0.10)';
-  ctx.beginPath();
-  ctx.arc(0, 0, 196, 0, TAU);
+  ctx.arc(0, 0, u * 0.215, 0, TAU);
   ctx.stroke();
   ctx.setLineDash([]);
   ctx.restore();

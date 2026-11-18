@@ -76,6 +76,26 @@ export function spawnTrailPuff(game, x, y, color) {
   game.particles.push(p);
 }
 
+// Ambient motes: embers and dust drifting up through the arena on the night air.
+// Long-lived, slow and tiny — a dozen alive at once is ambience, not weather. They
+// ride the same pool as every other particle and cost a plain circle apiece.
+export function spawnMote(game, x, y) {
+  if (game.particles.length >= MAX_PARTICLES) return;
+  const p = takeParticle();
+  p.x = x; p.y = y;
+  p.vx = (Math.random() - 0.5) * 7;
+  p.vy = -(7 + Math.random() * 11);
+  p.maxLife = p.life = 4.5 + Math.random() * 3;
+  p.size = 1 + Math.random() * 1.4;
+  p.color = Math.random() < 0.55 ? 'rgba(255, 196, 120, 0.55)' : 'rgba(165, 178, 255, 0.5)';
+  p.drag = 0;
+  p.gravity = 0;
+  p.add = false;
+  p.glow = false;
+  p.flash = false;
+  game.particles.push(p);
+}
+
 export function spawnFloatText(game, x, y, text, color, size = 13) {
   if (game.texts.length > 40) game.texts.shift();
   game.texts.push({ x, y, text, color, size, life: 0.75, maxLife: 0.75, vy: -46 });

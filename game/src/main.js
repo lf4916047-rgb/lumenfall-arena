@@ -11,7 +11,7 @@ import { initInput, wasPressed, anyPressed, endFrame, onFirstGesture } from './i
 import { makePlayer, updatePlayer, updateEnemies, updateProjectiles, updateShards, spawnEnemy, damageEnemy } from './entities.js';
 import { makeLoadout, updateWeapons, buildChoices } from './weapons.js';
 import { makeDirector, updateDirector } from './director.js';
-import { initEffects, updateEffects, spawnTrailPuff } from './particles.js';
+import { initEffects, updateEffects, spawnTrailPuff, spawnMote } from './particles.js';
 import { initBackground, renderGame } from './render.js';
 import { makeScore, updateScore, settleScore } from './score.js';
 import { makeRelicState, buildRelicChoices, updateRelics } from './relics.js';
@@ -228,6 +228,10 @@ const PHASES = [
 
 function updatePlaying(dt) {
   game.elapsed += dt;
+  // Ambient embers and dust rise through the arena while the fight runs.
+  const a = game.arena;
+  if (Math.random() < dt * 2.4) spawnMote(game, a.x + Math.random() * a.w, a.y + a.h - Math.random() * 30);
+  if (Math.random() < dt * 0.5) spawnMote(game, a.x + Math.random() * a.w, a.y + Math.random() * a.h);
   updatePlayer(game, dt);
   updateWeapons(game, dt);
   updateDirector(game, dt);
@@ -278,6 +282,10 @@ function updateTitle(dt) {
   if (Math.random() < dt * 6) {
     const a = game.arena;
     spawnTrailPuff(game, a.x + Math.random() * a.w, a.y + Math.random() * a.h, 'rgba(120, 132, 255, 0.5)');
+  }
+  if (Math.random() < dt * 2) {
+    const a = game.arena;
+    spawnMote(game, a.x + Math.random() * a.w, a.y + Math.random() * a.h);
   }
 }
 
