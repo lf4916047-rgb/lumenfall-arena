@@ -4,7 +4,7 @@
 
 import { COLORS, ENEMIES, PLAYER, enemyHpScale } from './config.js';
 import { moveVector, isDown } from './input.js';
-import { spawnBurst, spawnTrailPuff, spawnFloatText, spawnFlash, spawnRing, addShake } from './particles.js';
+import { spawnBurst, spawnTrailPuff, spawnFloatText, spawnFlash, spawnRing, spawnWisp, addShake } from './particles.js';
 import { sfxDash, sfxHurt, sfxPickup } from './audio.js';
 import { hasRelic, queueMeteor } from './relics.js';
 import { registerKill } from './score.js';
@@ -105,6 +105,7 @@ export function damageEnemy(game, enemy, amount, knockX = 0, knockY = 0, critBon
     crit = true;
   }
   enemy.hp -= amount;
+  game.damageDealt = (game.damageDealt ?? 0) + amount;
   enemy.flash = 0.09;
   enemy.kx += knockX;
   enemy.ky += knockY;
@@ -146,10 +147,30 @@ export function killEnemy(game, enemy) {
   }
   const burstColor = enemy.elite ? COLORS.shardLarge : COLORS[ENEMIES[enemy.kind].color];
   spawnBurst(game, enemy.x, enemy.y, burstColor, enemy.elite ? 26 : 12, enemy.elite ? 260 : 180);
+  // The soul the foe carried rises out of the burst — one wisp for the swarm,
+  // a small ascension for the court's champions.
+  spawnWisp(game, enemy.x, enemy.y, burstColor);
+  if (enemy.elite || enemy.kind === 'midboss' || enemy.kind === 'boss') {
+    spawnWisp(game, enemy.x, enemy.y, COLORS.bossCrown);
+    // A heartbeat of stillness when a champion falls: the world notices.
+    game.hitStop = Math.max(game.hitStop ?? 0, enemy.kind === 'boss' ? 0.06 : enemy.kind === 'midboss' ? 0.055 : 0.045);
+  }
   // Shards: the enemy's XP value, split so big kills scatter a satisfying little pile.
   let remaining = enemy.xpValue * (enemy.elite ? 3 : 1);
   while (remaining >= 5) { spawnShard(game, enemy.x, enemy.y, 5); remaining -= 5; }
   while (remaining > 0) { spawnShard(game, enemy.x, enemy.y, 1); remaining -= 1; }
+  if (enemy.kind === 'midboss') {
+    // The Herald's fall cracks the court's hoard wide: the draft he funds is
+    // guaranteed rich — Gold or better, whatever the clock says.
+    game.midbossDefeated = true;
+    game.richDraft = true;
+    game.pendingRelicDrafts = (game.pendingRelicDrafts ?? 0) + 1;
+    addShake(game, 11);
+    spawnBurst(game, enemy.x, enemy.y, COLORS.herald, 44, 300);
+    spawnBurst(game, enemy.x, enemy.y, COLORS.bossCrown, 26, 240);
+    spawnFlash(game, enemy.x, enemy.y, COLORS.herald, 100, 0.35);
+    spawnRing(game, enemy.x, enemy.y, COLORS.herald, 220, 6);
+  }
   if (enemy.kind === 'boss') {
     game.bossDefeated = true;
     addShake(game, 14);
@@ -389,6 +410,10 @@ export function updateEnemies(game, dt) {
         }
         break;
       }
+      case 'midboss': {
+        updateHerald(game, enemy, dt, ux, uy, d);
+        break;
+      }
       case 'boss': {
         updateBoss(game, enemy, dt, ux, uy, d);
         break;
@@ -415,6 +440,40 @@ export function updateEnemies(game, dt) {
 
   separateEnemies(enemies);
   game.enemies = enemies.filter((enemy) => !enemy.dead);
+}
+
+// The Ashen Herald fights like a lesser King: he advances steadily, breathes
+// rings of ember bolts, and calls darters down out of the smoke. No summons of
+// moths, no enrage — he is the road's toll, not its end.
+function updateHerald(game, enemy, dt, ux, uy, d) {
+  const player = game.player;
+  enemy.vx = ux * enemy.speed;
+  enemy.vy = uy * enemy.speed;
+
+  enemy.burstT -= dt;
+  if (enemy.burstT <= 0 && player.alive) {
+    enemy.burstT = 3.4;
+    const count = 10;
+    const offset = Math.random() * TAU;
+    for (let i = 0; i < count; i++) {
+      const angle = offset + (i / count) * TAU;
+      fireBolt(game, {
+        x: enemy.x, y: enemy.y,
+        vx: Math.cos(angle) * 158, vy: Math.sin(angle) * 158,
+        damage: 11, friendly: false, radius: 6, life: 4.2, color: COLORS.herald,
+      });
+    }
+    spawnBurst(game, enemy.x, enemy.y, COLORS.herald, 12, 190);
+  }
+
+  enemy.summonT -= dt;
+  if (enemy.summonT <= 0) {
+    enemy.summonT = 7;
+    for (let i = 0; i < 2; i++) {
+      const angle = (i / 2) * TAU + Math.random();
+      spawnEnemy(game, 'darter', enemy.x + Math.cos(angle) * 56, enemy.y + Math.sin(angle) * 56);
+    }
+  }
 }
 
 function updateBoss(game, enemy, dt, ux, uy, d) {

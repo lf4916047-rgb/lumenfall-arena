@@ -14,6 +14,7 @@ export const SCORE_VALUES = {
   spitter: 25,
   brute: 40,
   elite: 250,
+  midboss: 1500,
   boss: 5000,
 };
 
@@ -59,6 +60,8 @@ export function makeScore() {
     chain: 0,
     chainT: 0,
     mult: 1,
+    maxMult: 1,
+    maxChain: 0,
     best: loadBest(),
     isBest: false,
   };
@@ -73,17 +76,23 @@ function multForChain(chain) {
 export function registerKill(game, enemy) {
   const s = game.score;
   const value = enemy.kind === 'boss' ? SCORE_VALUES.boss
+    : enemy.kind === 'midboss' ? SCORE_VALUES.midboss
     : enemy.elite ? SCORE_VALUES.elite
     : SCORE_VALUES[enemy.kind] ?? 10;
   s.chain++;
   s.chainT = 3;
   s.mult = multForChain(s.chain);
+  if (s.mult > s.maxMult) s.maxMult = s.mult;
+  if (s.chain > s.maxChain) s.maxChain = s.chain;
   const gained = value * s.mult;
   s.score += gained;
-  // Only the kills that matter shout their price; a moth's +10 would drown the field.
-  if (enemy.elite || enemy.kind === 'boss') {
-    spawnFloatText(game, enemy.x, enemy.y - enemy.radius - 18, `+${gained}`, COLORS.bossCrown, enemy.kind === 'boss' ? 22 : 16);
-  }
+  // Every kill shows its price in amber — small for the swarm, grand for the
+  // court's champions — the way the tally should read at a glance.
+  const grand = enemy.kind === 'boss' || enemy.kind === 'midboss';
+  spawnFloatText(
+    game, enemy.x, enemy.y + enemy.radius * 0.4, `+${gained}`,
+    COLORS.bossCrown, grand ? 22 : enemy.elite ? 16 : 11,
+  );
   if (hasRelic(game, 'bloodchalice')) {
     const relics = game.relics;
     relics.killTrack++;

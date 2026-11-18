@@ -79,19 +79,43 @@ export function spawnTrailPuff(game, x, y, color) {
 // Ambient motes: embers and dust drifting up through the arena on the night air.
 // Long-lived, slow and tiny — a dozen alive at once is ambience, not weather. They
 // ride the same pool as every other particle and cost a plain circle apiece.
-export function spawnMote(game, x, y) {
+// In the Frost Throne they change their nature: pale, slow, cold.
+export function spawnMote(game, x, y, tint = null) {
   if (game.particles.length >= MAX_PARTICLES) return;
   const p = takeParticle();
   p.x = x; p.y = y;
   p.vx = (Math.random() - 0.5) * 7;
-  p.vy = -(7 + Math.random() * 11);
+  p.vy = tint === 'frost' ? -(4 + Math.random() * 7) : -(7 + Math.random() * 11);
   p.maxLife = p.life = 4.5 + Math.random() * 3;
   p.size = 1 + Math.random() * 1.4;
-  p.color = Math.random() < 0.55 ? 'rgba(255, 196, 120, 0.55)' : 'rgba(165, 178, 255, 0.5)';
+  p.color = tint === 'frost'
+    ? (Math.random() < 0.5 ? 'rgba(190, 226, 255, 0.55)' : 'rgba(232, 246, 255, 0.5)')
+    : (Math.random() < 0.55 ? 'rgba(255, 196, 120, 0.55)' : 'rgba(165, 178, 255, 0.5)');
   p.drag = 0;
   p.gravity = 0;
   p.add = false;
   p.glow = false;
+  p.flash = false;
+  game.particles.push(p);
+}
+
+// A soul wisp: the light a foe was carrying, set loose. It rises, sways and
+// burns out in under a second — one per kill, so a melting screen trails
+// ascending souls. Additive with a glow halo, from the same pooled stock.
+export function spawnWisp(game, x, y, color) {
+  if (game.particles.length >= MAX_PARTICLES) return;
+  const p = takeParticle();
+  p.x = x + (Math.random() - 0.5) * 8;
+  p.y = y;
+  p.vx = (Math.random() - 0.5) * 16;
+  p.vy = -(52 + Math.random() * 30);
+  p.maxLife = p.life = 0.65 + Math.random() * 0.25;
+  p.size = 2.2 + Math.random() * 1.4;
+  p.color = color;
+  p.drag = 0.6;
+  p.gravity = -34; // buoyant: it climbs faster as it goes
+  p.add = true;
+  p.glow = true;
   p.flash = false;
   game.particles.push(p);
 }

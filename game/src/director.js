@@ -2,7 +2,7 @@
 // shrinks and the mix hardens as the Dawn Timer runs down; elites arrive on a drumbeat and
 // the Hollow King makes his entrance at four minutes, heralded six seconds ahead.
 
-import { COLORS, ENEMIES, BOSS_TIME, BOSS_WARN_TIME, ELITE_EVERY, ELITE_FIRST, spawnInterval, aliveCap } from './config.js';
+import { COLORS, ENEMIES, BOSS_TIME, BOSS_WARN_TIME, MIDBOSS_TIME, MIDBOSS_WARN_TIME, ELITE_EVERY, ELITE_FIRST, KNOT_EVERY, KNOT_FIRST, spawnInterval, aliveCap } from './config.js';
 import { spawnEnemy } from './entities.js';
 import { spawnRing, spawnBurst, spawnFlash, addShake } from './particles.js';
 import { sfxBossWarn } from './audio.js';
@@ -13,7 +13,18 @@ export function makeDirector() {
     nextEliteAt: ELITE_FIRST,
     bossWarned: false,
     bossSpawned: false,
+    midbossWarned: false,
+    midbossSpawned: false,
+    nextKnotAt: KNOT_FIRST,
+    nextKnot: planKnot(KNOT_FIRST),
   };
+}
+
+// What the next knot carries: a lead kind (weighted like the trickle, so it
+// only ever promises what the run has unlocked) and a headcount that grows
+// with the hour. The HUD reads this to write its INCOMING line.
+function planKnot(at) {
+  return { at, kind: pickKind(at), count: Math.min(10, 4 + Math.floor(at / 40)) };
 }
 
 // A point on the arena's edge, biased away from the player so nothing spawns on top of them.
@@ -36,7 +47,7 @@ function edgeSpawnPoint(game) {
 }
 
 // The mix: moths always; the rest join at their unlock seconds and grow likelier over time.
-function pickKind(elapsed) {
+export function pickKind(elapsed) {
   const roll = Math.random();
   const darterW = elapsed >= ENEMIES.darter.unlock ? 0.24 : 0;
   const spitterW = elapsed >= ENEMIES.spitter.unlock ? 0.15 : 0;
@@ -50,6 +61,43 @@ function pickKind(elapsed) {
 export function updateDirector(game, dt) {
   const director = game.director;
   const elapsed = game.elapsed;
+
+  // The lieutenant first: warned at 2:24, the Ashen Herald takes the field at
+  // 2:30 with the same ceremony as his King, in ember instead of rose.
+  if (!director.midbossWarned && elapsed >= MIDBOSS_WARN_TIME) {
+    director.midbossWarned = true;
+    game.midbossWarning = 3.2;
+    sfxBossWarn();
+  }
+  if (!director.midbossSpawned && elapsed >= MIDBOSS_TIME) {
+    director.midbossSpawned = true;
+    const a = game.arena;
+    game.midboss = spawnEnemy(game, 'midboss', a.x + a.w / 2, a.y + 84);
+    game.midbossSpawned = true;
+    spawnRing(game, game.midboss.x, game.midboss.y, COLORS.herald, 200, 6);
+    spawnBurst(game, game.midboss.x, game.midboss.y, COLORS.herald, 26, 260);
+    spawnFlash(game, game.midboss.x, game.midboss.y, COLORS.herald, 95, 0.35);
+    addShake(game, 8);
+  }
+
+  // Knots: a named bunch arrives together at one edge point, on the half
+  // minute — the trickle keeps flowing underneath.
+  if (elapsed >= director.nextKnotAt) {
+    const knot = director.nextKnot;
+    const point = edgeSpawnPoint(game);
+    for (let i = 0; i < knot.count; i++) {
+      spawnEnemy(game, knot.kind, point.x + (Math.random() - 0.5) * 90, point.y + (Math.random() - 0.5) * 90);
+    }
+    if (elapsed > 120 && Math.random() < 0.4) {
+      const second = pickKind(elapsed);
+      const n = Math.max(2, Math.floor(knot.count / 2));
+      for (let i = 0; i < n; i++) {
+        spawnEnemy(game, second, point.x + (Math.random() - 0.5) * 120, point.y + (Math.random() - 0.5) * 120);
+      }
+    }
+    director.nextKnotAt += KNOT_EVERY;
+    director.nextKnot = planKnot(director.nextKnotAt);
+  }
 
   // The herald: a warning sting and banner just before the King arrives.
   if (!director.bossWarned && elapsed >= BOSS_WARN_TIME) {

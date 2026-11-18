@@ -41,6 +41,7 @@ const GEOMETRY = {
   darter: { wU: 2.02, hU: 2.9, yOffU: -0.95 },
   brute: { wU: 2.53, hU: 2.85, yOffU: -0.93 },
   spitter: { wU: 2.05, hU: 2.95, yOffU: -0.98 },
+  midboss: { wU: 3.35, hU: 3.76, yOffU: -1.45 },
   boss: { wU: 3.87, hU: 4.35, yOffU: -1.68 },
 };
 
@@ -103,28 +104,37 @@ function silhouetteOf(canvas) {
   return ghost;
 }
 
-// Elites wear their rank in gold: the same frames washed warm at load. (The
-// live gold ring render.js draws around elites does the rest.)
-function goldTintOf(canvas) {
-  const gilt = document.createElement('canvas');
-  gilt.width = canvas.width;
-  gilt.height = canvas.height;
-  const c = gilt.getContext('2d');
+// Variants wear their allegiance as a wash at load: elites in gold, and the
+// Ashen Herald — the King's lieutenant — in ember-ash, the same big demon
+// frames burned orange-grey so he reads as his own creature, not a small King.
+function tintOf(canvas, fill, redrawAlpha) {
+  const tinted = document.createElement('canvas');
+  tinted.width = canvas.width;
+  tinted.height = canvas.height;
+  const c = tinted.getContext('2d');
   c.drawImage(canvas, 0, 0);
   c.globalCompositeOperation = 'source-atop';
-  c.fillStyle = 'rgba(255, 176, 66, 0.34)';
-  c.fillRect(0, 0, gilt.width, gilt.height);
+  c.fillStyle = fill;
+  c.fillRect(0, 0, tinted.width, tinted.height);
   c.globalCompositeOperation = 'source-over';
-  c.globalAlpha = 0.45;
+  c.globalAlpha = redrawAlpha;
   c.drawImage(canvas, 0, 0);
   c.globalAlpha = 1;
-  return gilt;
+  return tinted;
 }
 
-function makeCycle(images, elite) {
+function goldTintOf(canvas) {
+  return tintOf(canvas, 'rgba(255, 176, 66, 0.34)', 0.45);
+}
+
+function ashTintOf(canvas) {
+  return tintOf(canvas, 'rgba(255, 116, 38, 0.46)', 0.26);
+}
+
+function makeCycle(images, tintFn = null) {
   const frames = images.map((img) => {
     const base = canvasOf(img);
-    return elite ? goldTintOf(base) : base;
+    return tintFn ? tintFn(base) : base;
   });
   return { frames, flash: frames.map(silhouetteOf) };
 }
@@ -150,16 +160,21 @@ async function loadAll() {
   const built = {};
   for (const [kind, cycles] of Object.entries(loaded)) {
     const geo = GEOMETRY[kind];
-    const normalCycles = { idle: makeCycle(cycles.idle, false) };
-    if (cycles.run) normalCycles.run = makeCycle(cycles.run, false);
+    const normalCycles = { idle: makeCycle(cycles.idle) };
+    if (cycles.run) normalCycles.run = makeCycle(cycles.run);
     if (kind === 'player' || kind === 'boss') {
       built[kind] = makeSet(geo, normalCycles);
     } else {
-      const eliteCycles = { idle: makeCycle(cycles.idle, true) };
-      if (cycles.run) eliteCycles.run = makeCycle(cycles.run, true);
+      const eliteCycles = { idle: makeCycle(cycles.idle, goldTintOf) };
+      if (cycles.run) eliteCycles.run = makeCycle(cycles.run, goldTintOf);
       built[kind] = { normal: makeSet(geo, normalCycles), elite: makeSet(geo, eliteCycles) };
     }
   }
+  // The Ashen Herald rides the King's own frames, burned ember-ash.
+  built.midboss = makeSet(GEOMETRY.midboss, {
+    idle: makeCycle(loaded.boss.idle, ashTintOf),
+    run: makeCycle(loaded.boss.run, ashTintOf),
+  });
   sets = built;
   artReady = true;
   window.__lumenfallSpritesReady = true;
@@ -180,6 +195,7 @@ function placeholderSets() {
   placeholder = {
     player: set(GEOMETRY.player),
     boss: set(GEOMETRY.boss),
+    midboss: set(GEOMETRY.midboss),
     moth: { normal: set(GEOMETRY.moth), elite: set(GEOMETRY.moth) },
     darter: { normal: set(GEOMETRY.darter), elite: set(GEOMETRY.darter) },
     brute: { normal: set(GEOMETRY.brute), elite: set(GEOMETRY.brute) },

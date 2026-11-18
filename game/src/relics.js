@@ -217,7 +217,14 @@ function tierWeights(elapsed, prismUnlocked) {
 // means the court's whole hoard is already carried — the draft does not open.
 export function buildRelicChoices(game) {
   const count = 3 + (game.extraRelicChoice ? 1 : 0);
-  const weights = tierWeights(game.elapsed, !!game.prismUnlocked);
+  // The Ashen Herald's fall guarantees one rich draft: Gold or better in every
+  // slot (Prismatic only for wardens who have unlocked it). The flag is spent
+  // by the draft it funds.
+  const rich = !!game.richDraft;
+  if (rich) game.richDraft = false;
+  const weights = rich
+    ? (game.prismUnlocked ? { silver: 0, gold: 0.72, prismatic: 0.28 } : { silver: 0, gold: 1, prismatic: 0 })
+    : tierWeights(game.elapsed, !!game.prismUnlocked);
   const pool = RELICS.filter((r) => !game.relics.owned.includes(r.key));
   const picks = [];
   while (picks.length < count && pool.length > 0) {

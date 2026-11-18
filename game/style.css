@@ -46,6 +46,52 @@ html, body {
 .hud-right { align-items: flex-end; font-weight: 700; font-size: 17px; color: #ffd97a; min-width: 0; }
 .hud-right #level-text { color: #2ee6c8; }
 #score-text { font-size: 19px; font-weight: 800; letter-spacing: 0.08em; color: #ffe9b0; text-shadow: 0 0 12px rgba(255, 179, 64, 0.4); }
+#best-text { font-size: 11.5px; font-weight: 700; letter-spacing: 0.14em; color: #9aa3e8; }
+#dust-text { color: #ffd97a; text-shadow: 0 0 10px rgba(255, 179, 64, 0.5); }
+#chapter-text {
+  font-size: 12.5px; font-weight: 800; letter-spacing: 0.14em; color: #ffe9b0;
+  text-shadow: 0 0 10px rgba(255, 179, 64, 0.4); white-space: nowrap;
+}
+#incoming-text {
+  font-size: 11.5px; font-weight: 700; letter-spacing: 0.12em; color: #ff8fab;
+  text-shadow: 0 0 8px rgba(227, 61, 110, 0.45); white-space: nowrap;
+}
+
+/* --- The road map ------------------------------------------------------------ */
+/* Six nodes across the top-centre: where the vigil has been, where it stands,
+   what still waits. Done nodes check off in teal; the current one breathes. */
+
+#roadmap {
+  display: flex; align-items: center; justify-content: center;
+  gap: 0; margin-top: 7px;
+}
+.road-node {
+  display: flex; flex-direction: column; align-items: center; gap: 2px;
+  min-width: 34px;
+}
+.road-dot {
+  width: 21px; height: 21px;
+  display: flex; align-items: center; justify-content: center;
+  font-size: 11px; line-height: 1;
+  border-radius: 50%;
+  border: 1.5px solid rgba(120, 132, 255, 0.4);
+  background: rgba(9, 11, 34, 0.8);
+  color: #9aa3e8;
+}
+.road-label { font-size: 9px; font-weight: 700; letter-spacing: 0.1em; color: #69709f; white-space: nowrap; }
+.road-link { flex: none; width: 13px; height: 2px; background: rgba(120, 132, 255, 0.3); margin: 0 1px 13px; }
+.road-node.done .road-dot { border-color: rgba(46, 230, 200, 0.8); color: #2ee6c8; box-shadow: 0 0 8px rgba(46, 230, 200, 0.4); }
+.road-node.done .road-label { color: #2ee6c8; }
+.road-node.current .road-dot {
+  border-color: #ffd97a; color: #ffd97a;
+  box-shadow: 0 0 12px rgba(255, 179, 64, 0.65);
+  animation: road-pulse 1.6s ease-in-out infinite;
+}
+.road-node.current .road-label { color: #ffe9b0; }
+@keyframes road-pulse {
+  0%, 100% { transform: scale(1); }
+  50% { transform: scale(1.18); }
+}
 #combo-text {
   font-size: 13px; font-weight: 800; letter-spacing: 0.14em; color: #9be7ff;
   opacity: 0; transition: opacity 0.2s;
@@ -110,6 +156,10 @@ body.touch #loadout.open { transform: translate(0, -50%); }
 .loadout-pips { font-size: 8.5px; letter-spacing: 0.14em; color: #ffd97a; }
 .loadout-count { font-weight: 700; color: #2ee6c8; }
 .loadout-row.relic-row .loadout-name { color: #ecd9ff; }
+.tier-dot { flex: none; width: 8px; height: 8px; border-radius: 50%; margin-left: 2px; }
+.tier-dot.tier-silver { background: #c9d6f2; box-shadow: 0 0 6px rgba(201, 214, 242, 0.6); }
+.tier-dot.tier-gold { background: #ffb340; box-shadow: 0 0 7px rgba(255, 179, 64, 0.75); }
+.tier-dot.tier-prismatic { background: linear-gradient(135deg, #d9a6ff, #ff8fab); box-shadow: 0 0 8px rgba(196, 77, 255, 0.8); }
 
 .bar-block { display: flex; align-items: center; gap: 8px; }
 .bar-label { font-size: 11px; font-weight: 700; letter-spacing: 0.12em; color: #9aa3e8; width: 36px; }
@@ -175,6 +225,16 @@ body.touch #loadout.open { transform: translate(0, -50%); }
     repeating-linear-gradient(115deg, rgba(255, 255, 255, 0.16) 0 10px, rgba(255, 255, 255, 0) 10px 20px),
     linear-gradient(90deg, #a1123c, #e33d6e 45%, #ff7a4d);
   box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.5), 0 0 12px rgba(227, 61, 110, 0.6);
+}
+#boss-pct { color: #ffd7e2; font-size: 13px; letter-spacing: 0.08em; }
+/* The Herald's bar burns ember where his King's burns rose. */
+#bossbar.herald .boss-name { color: #ffcf9a; text-shadow: 0 0 16px rgba(255, 122, 40, 0.75), 0 2px 2px rgba(0, 0, 0, 0.6); }
+#bossbar.herald .boss-bar { background: rgba(40, 18, 4, 0.78); border-color: rgba(255, 178, 122, 0.75); box-shadow: 0 0 18px rgba(255, 122, 40, 0.45), inset 0 2px 5px rgba(0, 0, 0, 0.6); }
+#bossbar.herald #boss-fill {
+  background:
+    repeating-linear-gradient(115deg, rgba(255, 255, 255, 0.16) 0 10px, rgba(255, 255, 255, 0) 10px 20px),
+    linear-gradient(90deg, #8a3c08, #e06a1d 45%, #ffb340);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.5), 0 0 12px rgba(255, 122, 40, 0.6);
 }
 
 #banner {
@@ -287,6 +347,26 @@ body.touch #pause-btn { display: block; }
   padding: 5px 12px;
 }
 .features span:last-child { color: #ff8fab; border-color: rgba(227, 61, 110, 0.55); }
+/* The journey strip and the terms of the vigil, on the title and pause screens. */
+.journey {
+  display: flex; align-items: center; justify-content: center; flex-wrap: wrap;
+  gap: 5px; margin: 0 0 12px;
+  font-size: 12.5px; font-weight: 700; letter-spacing: 0.08em; color: #c9ceff;
+}
+.journey-node {
+  border: 1px solid rgba(120, 132, 255, 0.4);
+  background: rgba(16, 20, 58, 0.65);
+  border-radius: 999px; padding: 4px 11px;
+}
+.journey-arrow { color: #69709f; }
+.winlose { font-size: 13.5px; color: #9aa3e8; margin: 0 0 14px; letter-spacing: 0.04em; }
+.win-tag, .lose-tag {
+  font-size: 10.5px; font-weight: 900; letter-spacing: 0.14em;
+  border-radius: 5px; padding: 2px 7px; margin-right: 5px; vertical-align: 1px;
+}
+.win-tag { color: #0d2b1e; background: linear-gradient(180deg, #8ffbe9, #2ee6c8); }
+.lose-tag { color: #ffd7e2; background: linear-gradient(180deg, #e33d6e, #a1123c); }
+
 .howto { color: #9aa3e8; font-size: 14px; line-height: 1.7; margin: 0 0 22px; }
 .howto strong { color: #ffd97a; }
 .hint { color: #69709f; font-size: 12px; margin-top: 10px; }
@@ -472,6 +552,66 @@ body.touch #pause-btn { display: block; }
 }
 #end-stats span { font-size: 11px; letter-spacing: 0.14em; color: #9aa3e8; text-transform: uppercase; }
 #end-stats strong { font-size: 22px; color: #ffe9b0; }
+
+/* --- The rank medallion and the itemised wages -------------------------------- */
+
+#end-medallion {
+  width: 104px; height: 104px;
+  margin: 2px 0 18px;
+  border-radius: 50%;
+  display: flex; flex-direction: column; align-items: center; justify-content: center;
+  background: radial-gradient(circle at 38% 32%, rgba(32, 40, 100, 0.95), rgba(9, 11, 34, 0.97) 70%);
+  border: 3px solid rgba(120, 132, 255, 0.5);
+  box-shadow: 0 0 34px rgba(88, 98, 214, 0.35), inset 0 2px 0 rgba(255, 255, 255, 0.18), inset 0 -8px 18px rgba(0, 0, 0, 0.5);
+}
+#end-medallion-rank { font-size: 54px; font-weight: 900; line-height: 1; color: #9aa3e8; }
+#end-medallion .medallion-caption { font-size: 9.5px; font-weight: 800; letter-spacing: 0.34em; color: #69709f; margin-top: 3px; }
+#end-medallion.rank-S { border-color: #ffd97a; box-shadow: 0 0 44px rgba(255, 179, 64, 0.65), inset 0 2px 0 rgba(255, 255, 255, 0.3), inset 0 -8px 18px rgba(0, 0, 0, 0.5); }
+#end-medallion.rank-S #end-medallion-rank { color: #ffd97a; text-shadow: 0 0 22px rgba(255, 217, 122, 0.9); }
+#end-medallion.rank-A { border-color: rgba(46, 230, 200, 0.8); box-shadow: 0 0 36px rgba(46, 230, 200, 0.45), inset 0 2px 0 rgba(255, 255, 255, 0.25), inset 0 -8px 18px rgba(0, 0, 0, 0.5); }
+#end-medallion.rank-A #end-medallion-rank { color: #8ffbe9; text-shadow: 0 0 18px rgba(46, 230, 200, 0.7); }
+#end-medallion.rank-B #end-medallion-rank { color: #9be7ff; }
+#end-medallion.fallen { filter: saturate(0.55) brightness(0.8); }
+
+#end-rewards {
+  width: min(430px, 92vw);
+  margin: 0 0 22px;
+  padding: 13px 18px 15px;
+  border: 1px solid rgba(255, 217, 122, 0.45);
+  border-radius: 12px;
+  background: linear-gradient(180deg, rgba(30, 26, 60, 0.92), rgba(11, 14, 42, 0.92));
+  box-shadow: 0 6px 22px rgba(0, 0, 0, 0.4), 0 0 18px rgba(255, 179, 64, 0.14), inset 0 1px 0 rgba(255, 233, 176, 0.16);
+  text-align: left;
+}
+#end-rewards:empty { display: none; }
+.rewards-head { text-align: center; font-size: 12px; font-weight: 900; letter-spacing: 0.26em; color: #ffd97a; margin-bottom: 9px; text-shadow: 0 0 12px rgba(255, 179, 64, 0.5); }
+.reward-line {
+  display: flex; justify-content: space-between; align-items: baseline; gap: 18px;
+  padding: 3px 0;
+  font-size: 14px; color: #c9ceff;
+}
+.reward-line strong { color: #ffe9b0; font-size: 15px; white-space: nowrap; }
+.reward-line.bloom strong { color: #d9a6ff; }
+.reward-line.total {
+  border-top: 1px solid rgba(255, 217, 122, 0.35);
+  margin-top: 6px; padding-top: 8px;
+  font-weight: 800; color: #ffe9b0;
+}
+.reward-line.total strong { color: #ffd97a; font-size: 17px; text-shadow: 0 0 10px rgba(255, 179, 64, 0.5); }
+.xp-progress {
+  position: relative;
+  height: 17px; margin: 7px 0 3px;
+  border-radius: 6px; overflow: hidden;
+  background: rgba(46, 230, 200, 0.14);
+  border: 1px solid rgba(46, 230, 200, 0.35);
+}
+.xp-progress-fill { height: 100%; background: linear-gradient(90deg, #1d9d84, #2ee6c8, #8ffbe9); box-shadow: 0 0 10px rgba(46, 230, 200, 0.5); }
+.xp-progress span {
+  position: absolute; inset: 0;
+  display: flex; align-items: center; justify-content: center;
+  font-size: 10.5px; font-weight: 800; letter-spacing: 0.1em; color: #eafffa;
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.7);
+}
 #end-stats .stat-score strong { font-size: 27px; }
 #end-stats .stat-reward { border-color: rgba(255, 217, 122, 0.6); }
 #end-stats .stat-reward strong { color: #ffd97a; text-shadow: 0 0 12px rgba(255, 179, 64, 0.5); }
@@ -541,6 +681,20 @@ body.portrait #rotate-hint { display: flex; }
   #end-stats { margin-bottom: 14px; gap: 9px; }
   #end-stats > div { min-width: 106px; padding: 8px 12px; }
   #end-stats strong { font-size: 18px; }
+  #chapter-text { font-size: 11px; }
+  #incoming-text { font-size: 10.5px; }
+  #best-text { font-size: 10.5px; }
+  #roadmap { margin-top: 4px; }
+  .road-node { min-width: 24px; }
+  .road-dot { width: 16px; height: 16px; font-size: 9px; }
+  .road-label { display: none; }
+  .road-link { width: 8px; margin-bottom: 0; }
+  .journey { font-size: 11px; margin-bottom: 8px; }
+  .winlose { font-size: 12px; margin-bottom: 9px; }
+  #end-medallion { width: 74px; height: 74px; margin-bottom: 12px; }
+  #end-medallion-rank { font-size: 38px; }
+  #end-rewards { margin-bottom: 14px; padding: 10px 14px 11px; }
+  .reward-line { font-size: 12.5px; padding: 2px 0; }
   #banner { top: 18%; }
   .banner-title { font-size: 24px; }
 }

@@ -11,7 +11,7 @@
 // for the Star-warden, wogols, chort imps, ogres, a hooded necromancer, and
 // the big demon as the Hollow King — the frame loop just blits the frame.
 
-import { COLORS } from './config.js';
+import { COLORS, CHAPTERS, RUN_DURATION } from './config.js';
 import { getTouchUI } from './input.js';
 import { getSprites, getShardSprite, getFloorArt, blit, blitFlash, HOLLOW_HEART } from './sprites.js';
 
@@ -26,6 +26,7 @@ const TAU = Math.PI * 2;
 let bgCanvas = null;
 let dangerCanvas = null;
 let ringCanvas = null;
+let washPlates = [];
 let twinkles = [];
 
 function makeCanvas(width, height) {
@@ -685,6 +686,37 @@ export function initBackground(width, height, arena) {
     }
   }
 
+  // The chapter washes: one plate per tinted chapter, arena-sized. Each is a
+  // flat tint laid over the court's own colours, deepened toward the edges
+  // and warmed/cooled along the horizon band, so crossing into the Ember
+  // Deep or the Frost Throne re-lights the same stones rather than replacing
+  // them. drawBackground cross-fades between plates at a crossing.
+  washPlates = [null];
+  if (arena) {
+    const a = arena;
+    for (let i = 1; i < CHAPTERS.length; i++) {
+      const wash = CHAPTERS[i].wash;
+      if (!wash) { washPlates.push(null); continue; }
+      const plate = makeCanvas(a.w, a.h);
+      const wc = plate.getContext('2d');
+      const [r, g, b] = parseColor(wash);
+      wc.fillStyle = wash;
+      wc.fillRect(0, 0, a.w, a.h);
+      const edge = wc.createRadialGradient(a.w / 2, a.h / 2, Math.min(a.w, a.h) * 0.3, a.w / 2, a.h / 2, Math.max(a.w, a.h) * 0.68);
+      edge.addColorStop(0, `rgba(${r}, ${g}, ${b}, 0)`);
+      edge.addColorStop(1, `rgba(${r}, ${g}, ${b}, 0.15)`);
+      wc.fillStyle = edge;
+      wc.fillRect(0, 0, a.w, a.h);
+      const hb = Math.min(96, a.h * 0.14);
+      const sky = wc.createLinearGradient(0, 0, 0, hb + 26);
+      sky.addColorStop(0, `rgba(${r}, ${g}, ${b}, 0.22)`);
+      sky.addColorStop(1, `rgba(${r}, ${g}, ${b}, 0)`);
+      wc.fillStyle = sky;
+      wc.fillRect(0, 0, a.w, hb + 26);
+      washPlates.push(plate);
+    }
+  }
+
   // The cool vignette that seats the arena in the dark bakes over the plate;
   // only the red danger vignette stays its own canvas, since it pulses live.
   const vg = c.createRadialGradient(width / 2, height / 2, Math.min(width, height) * 0.42, width / 2, height / 2, Math.max(width, height) * 0.74);
@@ -782,6 +814,24 @@ function drawBackground(ctx, game, width, height) {
     ctx.fillStyle = COLORS.bgDeep;
     ctx.fillRect(0, 0, width, height);
   }
+  // The chapter wash over the court: the settled chapter's plate, and — for
+  // the breath of a crossing — the incoming plate fading in over it.
+  if (washPlates.length > 0 && game.arena) {
+    const a = game.arena;
+    const from = washPlates[game.chapterFrom ?? 0] ?? null;
+    const to = washPlates[game.chapter ?? 0] ?? null;
+    const trans = game.chapterTrans ?? 1;
+    if (trans >= 1) {
+      if (to) ctx.drawImage(to, a.x, a.y);
+    } else {
+      if (from) ctx.drawImage(from, a.x, a.y);
+      if (to) {
+        ctx.globalAlpha = trans;
+        ctx.drawImage(to, a.x, a.y);
+        ctx.globalAlpha = 1;
+      }
+    }
+  }
   // No drifting aurora veil: a screen-wide additive blit every frame measured out as
   // the single dearest paint in the scene, and the baked nebula plate already washes
   // the dark in violet and teal. The backdrop still moves — twinkles, motes, runes.
@@ -835,6 +885,11 @@ function drawArena(ctx, game) {
   ctx.stroke();
   ctx.setLineDash([]);
   ctx.restore();
+  // The court's heart burns brighter as the night deepens: a warm pulse over
+  // the summoning circle that swells with the run's progress toward dawn.
+  const progress = Math.min(1, (game.elapsed ?? 0) / RUN_DURATION);
+  const pulse = 0.09 + 0.045 * (0.5 + 0.5 * Math.sin(game.time * 2.1)) + progress * 0.13;
+  drawGlow(ctx, cx, cy, u * 0.52, '#ffb340', pulse);
 }
 
 function drawShards(ctx, game) {
@@ -896,8 +951,8 @@ function drawZaps(ctx, game) {
 
 function drawEnemy(ctx, game, enemy) {
   // Everything hostile smoulders: a low halo in its own colour under the body.
-  const baseColor = COLORS[{ moth: 'enemyMoth', darter: 'enemyDarter', brute: 'enemyBrute', spitter: 'enemySpitter', boss: 'boss' }[enemy.kind]];
-  if (enemy.kind !== 'boss') {
+  const baseColor = COLORS[{ moth: 'enemyMoth', darter: 'enemyDarter', brute: 'enemyBrute', spitter: 'enemySpitter', midboss: 'herald', boss: 'boss' }[enemy.kind]];
+  if (enemy.kind !== 'boss' && enemy.kind !== 'midboss') {
     // The small fry burn a little tighter — at swarm density their halos are
     // the single biggest sheet of additive blending in the frame.
     const glowR = enemy.elite ? 2.2 : (enemy.kind === 'moth' || enemy.kind === 'darter') ? 1.7 : 2.0;
@@ -905,7 +960,7 @@ function drawEnemy(ctx, game, enemy) {
   }
   ctx.save();
   ctx.translate(enemy.x, enemy.y);
-  if (enemy.kind === 'boss') {
+  if (enemy.kind === 'boss' || enemy.kind === 'midboss') {
     drawBoss(ctx, game, enemy);
   } else {
     const sprites = getSprites();
@@ -954,7 +1009,7 @@ function drawEnemy(ctx, game, enemy) {
   }
   ctx.restore();
   // A slim health bar over anything tougher than a moth.
-  if ((enemy.maxHp >= 30 || enemy.elite) && enemy.kind !== 'boss' && enemy.hp < enemy.maxHp) {
+  if ((enemy.maxHp >= 30 || enemy.elite) && enemy.kind !== 'boss' && enemy.kind !== 'midboss' && enemy.hp < enemy.maxHp) {
     const w = enemy.radius * 2;
     ctx.fillStyle = 'rgba(0,0,0,0.55)';
     ctx.fillRect(enemy.x - enemy.radius, enemy.y - enemy.radius - 11, w, 5);
@@ -965,26 +1020,29 @@ function drawEnemy(ctx, game, enemy) {
   }
 }
 
-// The Hollow King: layered auras and his turning rune ring stay live, but the
-// King himself is the tileset's big demon, breathing through its idle cycle
-// and striding through its run cycle, bobbing slowly as he comes. Live swirl
-// arcs still turn inside his dark heart.
+// The court's champions: layered auras and a turning rune ring stay live, but
+// the creature himself is the tileset's big demon, breathing through its idle
+// cycle and striding through its run cycle, bobbing slowly as he comes. The
+// Hollow King wears rose and carries the swirling dark heart; his lieutenant
+// the Ashen Herald is the same frames burned ember-ash, under an amber aura,
+// his ring turning the other way.
 function drawBoss(ctx, game, enemy) {
+  const isKing = enemy.kind === 'boss';
   const r = enemy.radius;
-  drawGlow(ctx, 0, 0, r * 2.9, '#5c1440', 0.30);
-  drawGlow(ctx, 0, 0, r * 2.0, COLORS.boss, 0.34);
+  drawGlow(ctx, 0, 0, r * 2.9, isKing ? '#5c1440' : '#3d1c05', 0.30);
+  drawGlow(ctx, 0, 0, r * 2.0, isKing ? COLORS.boss : COLORS.herald, 0.34);
 
   // A turning ring of runes and ember-shards at his court's edge.
   ctx.save();
-  ctx.rotate(game.time * 0.35);
-  ctx.strokeStyle = 'rgba(255, 217, 122, 0.5)';
+  ctx.rotate(game.time * (isKing ? 0.35 : -0.3));
+  ctx.strokeStyle = isKing ? 'rgba(255, 217, 122, 0.5)' : 'rgba(255, 178, 122, 0.5)';
   ctx.lineWidth = 2;
   ctx.setLineDash([14, 10]);
   ctx.beginPath();
   ctx.arc(0, 0, r * 1.38, 0, TAU);
   ctx.stroke();
   ctx.setLineDash([]);
-  ctx.fillStyle = COLORS.bossCrown;
+  ctx.fillStyle = isKing ? COLORS.bossCrown : '#ffcf9a';
   for (let i = 0; i < 8; i++) {
     const a = (i / 8) * TAU;
     ctx.save();
@@ -995,14 +1053,14 @@ function drawBoss(ctx, game, enemy) {
   }
   ctx.restore();
 
-  // The King himself, drawn larger than his collision body — he should loom,
-  // turned toward the warden he hunts.
+  // The champion himself, drawn larger than his collision body — he should
+  // loom, turned toward the warden he hunts.
   const sprites = getSprites();
-  const set = sprites.boss;
+  const set = sprites[enemy.kind];
   const speed = Math.hypot(enemy.vx ?? 0, enemy.vy ?? 0);
   const cycle = speed > 6 ? 'run' : 'idle';
   const frame = Math.floor(game.time * (cycle === 'run' ? 6 : 3.6)) % 4;
-  const scale = r * 1.32;
+  const scale = r * (isKing ? 1.32 : 1.22);
   ctx.save();
   ctx.translate(0, Math.sin(game.time * 1.6) * 4);
   ctx.rotate(Math.sin(game.time * 0.9) * 0.02);
@@ -1011,7 +1069,8 @@ function drawBoss(ctx, game, enemy) {
   if (enemy.flash > 0) blitFlash(ctx, set, cycle, frame, scale, (enemy.flash / 0.09) * 0.8);
   ctx.restore();
 
-  // Swirl arcs turning inside the dark of his heart.
+  if (!isKing) return;
+  // Swirl arcs turning inside the dark of the King's heart.
   const hx = HOLLOW_HEART.x * scale;
   const hy = HOLLOW_HEART.y * scale + Math.sin(game.time * 1.6) * 4;
   ctx.strokeStyle = 'rgba(255, 93, 143, 0.6)';

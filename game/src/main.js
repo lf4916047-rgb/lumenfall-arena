@@ -5,7 +5,7 @@
 // state advances the simulation. `window.__lumenfall` exposes the game object, which the
 // maker's own playtest script drives to verify a run end to end.
 
-import { RUN_DURATION, PLAYER, WEAPON_MAX_LEVEL, xpForLevel } from './config.js';
+import { RUN_DURATION, PLAYER, WEAPON_MAX_LEVEL, xpForLevel, CHAPTERS, chapterAt } from './config.js';
 import * as audio from './audio.js';
 import { initInput, wasPressed, anyPressed, endFrame, onFirstGesture, isTouchDevice } from './input.js';
 import { makePlayer, updatePlayer, updateEnemies, updateProjectiles, updateShards, spawnEnemy, damageEnemy } from './entities.js';
@@ -50,6 +50,17 @@ const game = {
   bossDefeated: false,
   bossWarning: 0,
   bannerShown: false,
+  midboss: null,
+  midbossSpawned: false,
+  midbossDefeated: false,
+  midbossWarning: 0,
+  midbossBannerShown: false,
+  richDraft: false,
+  hitStop: 0,
+  damageDealt: 0,
+  chapter: 0,
+  chapterFrom: 0,
+  chapterTrans: 1,
   score: null,
   relics: null,
   save: null,
@@ -116,6 +127,17 @@ function resetGame() {
   game.bossDefeated = false;
   game.bossWarning = 0;
   game.bannerShown = false;
+  game.midboss = null;
+  game.midbossSpawned = false;
+  game.midbossDefeated = false;
+  game.midbossWarning = 0;
+  game.midbossBannerShown = false;
+  game.richDraft = false;
+  game.hitStop = 0;
+  game.damageDealt = 0;
+  game.chapter = 0;
+  game.chapterFrom = 0;
+  game.chapterTrans = 1;
   game.score = makeScore();
   game.relics = makeRelicState();
   game.pendingRelicDrafts = 0;
@@ -190,6 +212,8 @@ function endRun(victory) {
   // window would otherwise leave the banner hanging over the end screen.
   game.bossWarning = 0;
   game.bannerShown = false;
+  game.midbossWarning = 0;
+  game.midbossBannerShown = false;
   hideBanner(ui);
   settleScore(game);
   // Every run pays: Stardust and account XP bank into the save before the end
@@ -350,21 +374,39 @@ function handleKeys() {
   }
 }
 
-// The run's named movements, announced as the dark gathers. The last heralds the
-// King and clears the stage six seconds before his own warning sting.
+// The run's named movements, announced as the dark gathers. The chapter
+// crossings have their own heraldry (below); the last phase clears the stage
+// six seconds before the King's own warning sting.
 const PHASES = [
   { at: 45, title: 'THE SWARM STIRS', sub: 'They have scented the last light.' },
-  { at: 105, title: 'THE DARK DEEPENS', sub: 'Wings in the rafters, eyes in the walls.' },
   { at: 165, title: 'THE COURT AWAKENS', sub: 'The Hollow King\'s servants take the field.' },
   { at: 225, title: 'THE KING\'S HERALD', sub: 'A crown of embers on the horizon. He is coming.' },
 ];
 
 function updatePlaying(dt) {
   game.elapsed += dt;
-  // Ambient embers and dust rise through the arena while the fight runs.
+  // The journey's crossings: when the clock carries the run into a new
+  // chapter, the arena's light changes (render.js cross-fades the wash) and
+  // the chapter announces itself, banner permitting.
+  const chapterNow = chapterAt(game.elapsed);
+  if (chapterNow !== game.chapter) {
+    game.chapterFrom = game.chapter;
+    game.chapter = chapterNow;
+    game.chapterTrans = 0;
+    const ch = CHAPTERS[chapterNow];
+    if (game.bossWarning <= 0 && game.midbossWarning <= 0 && game.phaseBannerT <= 0 && game.state === 'playing') {
+      showBanner(ui, `${ch.name} · ${ch.sub}`, chapterNow === 1 ? 'The court\'s furnaces wake below.' : 'Cold takes the high court. He is near.');
+      game.phaseBannerT = 2.6;
+    }
+  }
+  if (game.chapterTrans < 1) game.chapterTrans = Math.min(1, game.chapterTrans + dt / 1.6);
+  // Ambient embers and dust rise through the arena while the fight runs —
+  // thicker in the Ember Deep, and turned to frost in the last chapter.
   const a = game.arena;
-  if (Math.random() < dt * 2.4) spawnMote(game, a.x + Math.random() * a.w, a.y + a.h - Math.random() * 30);
-  if (Math.random() < dt * 0.5) spawnMote(game, a.x + Math.random() * a.w, a.y + Math.random() * a.h);
+  const frost = game.chapter === 2;
+  const emberRate = game.chapter === 1 ? 5.2 : 3.2;
+  if (Math.random() < dt * emberRate) spawnMote(game, a.x + Math.random() * a.w, a.y + a.h - Math.random() * 30, frost ? 'frost' : null);
+  if (Math.random() < dt * 0.9) spawnMote(game, a.x + Math.random() * a.w, a.y + Math.random() * a.h, frost ? 'frost' : null);
   updatePlayer(game, dt);
   updateWeapons(game, dt);
   updateDirector(game, dt);
@@ -376,17 +418,27 @@ function updatePlaying(dt) {
   updateScore(game, dt);
   updateRelics(game, dt);
 
-  // Phase banners, on the same heraldry as the boss warning but never over it.
+  // Phase banners, on the same heraldry as the boss warnings but never over them.
   while (game.phaseIdx < PHASES.length && game.elapsed >= PHASES[game.phaseIdx].at) {
     const phase = PHASES[game.phaseIdx++];
-    if (game.bossWarning <= 0 && game.phaseBannerT <= 0 && game.state === 'playing') {
+    if (game.bossWarning <= 0 && game.midbossWarning <= 0 && game.phaseBannerT <= 0 && game.state === 'playing') {
       showBanner(ui, phase.title, phase.sub);
       game.phaseBannerT = 2.6;
     }
   }
   if (game.phaseBannerT > 0) {
     game.phaseBannerT -= dt;
-    if (game.phaseBannerT <= 0 && game.bossWarning <= 0) hideBanner(ui);
+    if (game.phaseBannerT <= 0 && game.bossWarning <= 0 && game.midbossWarning <= 0) hideBanner(ui);
+  }
+
+  // The lieutenant's warning banner, on the same drumbeat as his King's.
+  if (game.midbossWarning > 0) {
+    if (!game.midbossBannerShown) {
+      game.midbossBannerShown = true;
+      showBanner(ui, '🔥 THE ASHEN HERALD COMES 🔥', 'The King\'s lieutenant holds the road — break him.');
+    }
+    game.midbossWarning -= dt;
+    if (game.midbossWarning <= 0) hideBanner(ui);
   }
 
   // The boss herald banner lives for the warning's duration.
@@ -430,7 +482,11 @@ function loop(ts) {
   game.time += dt;
 
   handleKeys();
-  if (game.state === 'playing') updatePlaying(dt);
+  // Hit-stop: a champion's death freezes the world for a heartbeat. The clock
+  // (game.time) keeps turning, so glows and rings still breathe over the still.
+  if (game.state === 'playing' && game.hitStop > 0) {
+    game.hitStop -= dt;
+  } else if (game.state === 'playing') updatePlaying(dt);
   else if (game.state === 'title' || game.state === 'workshop') updateTitle(dt);
 
   renderGame(ctx, game, canvas.width, canvas.height);

@@ -22,6 +22,7 @@ export const COLORS = {
   enemySpitter: '#ff4dd2',
   enemyBolt: '#ff5d8f',
   boss: '#e33d6e',
+  herald: '#ff9a3d',
   bossCrown: '#ffd97a',
   hp: '#ff5d7a',
   hpBack: 'rgba(255, 93, 122, 0.22)',
@@ -36,6 +37,27 @@ export const COLORS = {
 export const RUN_DURATION = 300;
 export const BOSS_TIME = 240;
 export const BOSS_WARN_TIME = 234;
+// The King's lieutenant holds the middle of the road: warned at 2:24, met at 2:30.
+export const MIDBOSS_TIME = 150;
+export const MIDBOSS_WARN_TIME = 144;
+
+// The journey: three chapters across the five minutes, each with its own light.
+// Ch.1 暮光庭院 the Twilight Court (the indigo the arena already wears), Ch.2
+// 熔火地穴 the Ember Deep (a warm rust wash, thicker embers), Ch.3 寒霜王座 the
+// Frost Throne (a cold blue wash, frost motes on the air). The washes are baked
+// plates in render.js; `wash` here is the tint they are baked from.
+export const CHAPTERS = [
+  { name: '暮光庭院', sub: 'THE TWILIGHT COURT', until: 100, wash: null },
+  { name: '熔火地穴', sub: 'THE EMBER DEEP', until: 200, wash: 'rgba(255, 116, 38, 0.13)' },
+  { name: '寒霜王座', sub: 'THE FROST THRONE', until: Infinity, wash: 'rgba(96, 196, 255, 0.12)' },
+];
+
+export function chapterAt(elapsed) {
+  for (let i = 0; i < CHAPTERS.length; i++) {
+    if (elapsed < CHAPTERS[i].until) return i;
+  }
+  return CHAPTERS.length - 1;
+}
 
 export const PLAYER = {
   radius: 14,
@@ -62,6 +84,7 @@ export const ENEMIES = {
   darter: { hp: 8,   speed: 172, radius: 10, damage: 7,  xp: 1, unlock: 30,  color: 'enemyDarter' },
   spitter:{ hp: 20,  speed: 58,  radius: 14, damage: 8,  xp: 2, unlock: 75,  color: 'enemySpitter', range: 268, fireEvery: 2.3, boltSpeed: 196 },
   brute:  { hp: 84,  speed: 40,  radius: 26, damage: 16, xp: 3, unlock: 105, color: 'enemyBrute' },
+  midboss:{ hp: 620, speed: 38,  radius: 38, damage: 16, xp: 25, unlock: MIDBOSS_TIME, color: 'herald' },
   boss:   { hp: 1500, speed: 33, radius: 46, damage: 20, xp: 25, unlock: BOSS_TIME, color: 'boss' },
 };
 
@@ -84,6 +107,11 @@ export const ELITE_EVERY = 25;
 export const ELITE_FIRST = 50;
 export const ELITE_HP_MUL = 3.4;
 export const ELITE_SIZE_MUL = 1.55;
+
+// Spawn knots: on top of the director's steady trickle, a named knot of foes
+// arrives every half minute — the HUD's INCOMING line previews the next one.
+export const KNOT_EVERY = 30;
+export const KNOT_FIRST = 30;
 
 // Weapon tuning per level (index 0 = level 1). Passives live in weapons.js beside their defs.
 export const WEAPONS = {

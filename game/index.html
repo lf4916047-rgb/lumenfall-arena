@@ -15,6 +15,7 @@
   <div id="hud">
     <div class="hud-row">
       <div class="hud-cluster">
+        <div id="chapter-text">CH.1 · 暮光庭院</div>
         <div class="bar-block">
           <span class="bar-label">HP</span>
           <div class="bar hp-bar"><div id="hp-fill"></div></div>
@@ -25,17 +26,21 @@
           <div class="bar dash-bar"><div id="dash-fill"></div></div>
           <span id="dash-text" class="bar-text">DASH READY</span>
         </div>
+        <div id="incoming-text">INCOMING 🦋×4 · 0:30</div>
       </div>
       <div class="hud-center">
         <div id="timer-text">5:00</div>
         <div class="timer-caption">UNTIL DAWN</div>
+        <div id="roadmap"></div>
       </div>
       <div class="hud-cluster hud-right">
         <div id="score-text">SCORE 0</div>
+        <div id="best-text">BEST 0</div>
         <div id="combo-text">COMBO ×1</div>
         <div class="hud-right-sub">
           <span id="kills-text">☠ 0</span>
           <span id="level-text">LV 1</span>
+          <span id="dust-text">★ 0</span>
         </div>
       </div>
     </div>
@@ -55,7 +60,7 @@
 
   <!-- Boss health -->
   <div id="bossbar">
-    <div class="boss-name">👑 THE HOLLOW KING</div>
+    <div class="boss-name"><span id="boss-name-text">👑 THE HOLLOW KING</span> <span id="boss-pct">100%</span></div>
     <div class="bar boss-bar"><div id="boss-fill"></div></div>
   </div>
 
@@ -73,7 +78,16 @@
     <div class="title-emblem">✦</div>
     <h1 class="game-title">LUMENFALL<br>ARENA</h1>
     <p class="tagline">The last Star-Warden against the swarm. Survive five minutes to dawn — and unmake the Hollow King.</p>
-    <p class="features"><span>4 auto-weapons</span><span>7 blessings</span><span>14 relics · silver · gold · prismatic</span><span>workshop growth</span><span>the Hollow King at 4:00</span></p>
+    <p class="features"><span>4 auto-weapons</span><span>7 blessings</span><span>14 relics · silver · gold · prismatic</span><span>workshop growth</span><span>2 bosses</span></p>
+    <div class="journey" aria-label="The road of the vigil">
+      <span class="journey-node">🏯 暮光庭院</span><span class="journey-arrow">→</span>
+      <span class="journey-node">⚔ 精英之门</span><span class="journey-arrow">→</span>
+      <span class="journey-node">🔥 熔火地穴</span><span class="journey-arrow">→</span>
+      <span class="journey-node">🔥 灰烬使者</span><span class="journey-arrow">→</span>
+      <span class="journey-node">❄ 寒霜王座</span><span class="journey-arrow">→</span>
+      <span class="journey-node">👑 空心王</span>
+    </div>
+    <p class="winlose"><span class="win-tag">WIN</span> survive to dawn and unmake the Hollow King &nbsp;·&nbsp; <span class="lose-tag">LOSE</span> your light reaches 0</p>
     <p id="title-meta">WARDEN LV 1 · ★ 0 STARDUST</p>
     <p class="howto">
       <strong>WASD / Arrows</strong> move &nbsp;·&nbsp; <strong>Space / Shift</strong> dash &nbsp;·&nbsp; <strong>P</strong> pause &nbsp;·&nbsp; <strong>M</strong> mute<br>
@@ -110,6 +124,7 @@
   <section id="screen-pause" class="screen">
     <h2 class="screen-heading">PAUSED</h2>
     <p class="screen-sub">The swarm waits, barely.</p>
+    <p class="winlose"><span class="win-tag">WIN</span> survive to dawn and unmake the Hollow King &nbsp;·&nbsp; <span class="lose-tag">LOSE</span> your light reaches 0</p>
     <button id="resume-btn" class="big-btn">RESUME</button>
     <p class="hint">or press P</p>
   </section>
@@ -118,7 +133,9 @@
   <section id="screen-end" class="screen">
     <h2 id="end-title" class="victory">🌅 DAWN BREAKS</h2>
     <p id="end-sub" class="screen-sub"></p>
+    <div id="end-medallion"><span id="end-medallion-rank">S</span><span class="medallion-caption">RANK</span></div>
     <div id="end-stats"></div>
+    <div id="end-rewards"></div>
     <button id="restart-btn" class="big-btn">↻ &nbsp;PLAY AGAIN</button>
     <p class="hint">or press R</p>
   </section>

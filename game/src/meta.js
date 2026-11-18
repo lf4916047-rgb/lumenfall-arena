@@ -134,22 +134,40 @@ export function buyNode(save, key) {
 }
 
 // What a finished run pays. Kills are the wage, elites and score the bonus, the
-// King a royal bounty; survival time trickles in so even a short vigil pays.
+// Herald and the King royal bounties; survival time trickles in so even a short
+// vigil pays. The lines are returned itemised — the end screen reads them back
+// as the run's wages, line by line, before the Stardust Bloom multiplier folds
+// them into the banked total.
 export function computeRunRewards(game, bonuses) {
   const elites = game.elitesKilled ?? 0;
-  const rawStardust = game.kills
-    + elites * 8
-    + Math.floor((game.score ? game.score.score : 0) / 150)
-    + Math.floor(game.elapsed / 6)
-    + (game.bossDefeated ? 150 : 0);
+  const breakdown = {
+    kills: game.kills,
+    elites: elites * 8,
+    herald: game.midbossDefeated ? 60 : 0,
+    king: game.bossDefeated ? 150 : 0,
+    score: Math.floor((game.score ? game.score.score : 0) / 150),
+    time: Math.floor(game.elapsed / 6),
+  };
+  const rawStardust = breakdown.kills + breakdown.elites + breakdown.herald
+    + breakdown.king + breakdown.score + breakdown.time;
+  const stardustMul = bonuses ? bonuses.stardustMul : 1;
   const accountXp = Math.floor(game.kills * 0.6)
     + Math.floor(game.elapsed / 2)
     + elites * 6
     + (game.bossDefeated ? 120 : 0);
   return {
-    stardust: Math.floor(rawStardust * (bonuses ? bonuses.stardustMul : 1)),
+    stardust: Math.floor(rawStardust * stardustMul),
     accountXp,
+    breakdown,
+    stardustMul,
   };
+}
+
+// The same wages, live: what the run on the field has already earned, for the
+// HUD's Stardust counter. Mirrors computeRunRewards line for line.
+export function liveStardust(game, bonuses) {
+  const rewards = computeRunRewards(game, bonuses);
+  return rewards.stardust;
 }
 
 // Bank a run's rewards: Stardust in, account XP in, level-ups out (each one
