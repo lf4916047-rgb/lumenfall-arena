@@ -4,6 +4,7 @@
 // draws the world; this module draws everything a player reads.
 
 import { RUN_DURATION, PLAYER } from './config.js';
+import { isTouchDevice } from './input.js';
 
 function el(id) {
   return document.getElementById(id);
@@ -24,6 +25,7 @@ export function buildUI(handlers) {
     bossFill: el('boss-fill'),
     banner: el('banner'),
     muteBtn: el('mute-btn'),
+    pauseBtn: el('pause-btn'),
     screens: {
       title: el('screen-title'),
       levelup: el('screen-levelup'),
@@ -42,6 +44,19 @@ export function buildUI(handlers) {
   el('restart-btn').addEventListener('click', () => handlers.onRestart());
   el('resume-btn').addEventListener('click', () => handlers.onResume());
   ui.muteBtn.addEventListener('click', () => handlers.onMuteToggle());
+  if (ui.pauseBtn) ui.pauseBtn.addEventListener('click', () => handlers.onPause());
+
+  // On touch devices the prompts speak of taps, not keys, and the pause button
+  // (touch-only in the stylesheet) joins the page. Desktop text is untouched.
+  if (isTouchDevice()) {
+    document.body.classList.add('touch');
+    ui.screens.title.querySelector('.howto').innerHTML =
+      '<strong>Left thumb</strong> — drag anywhere for the stick &nbsp;·&nbsp; <strong>DASH</strong> button to dash &nbsp;·&nbsp; <strong>II</strong> pauses<br>'
+      + 'Your weapons fire on their own. Gather the teal lumen shards, level up, and build your arsenal.';
+    ui.screens.title.querySelector('.hint').textContent = 'Tap START THE VIGIL to play';
+    ui.screens.pause.querySelector('.hint').textContent = 'Tap RESUME to continue';
+    ui.screens.end.querySelector('.hint').textContent = 'Tap PLAY AGAIN to restart';
+  }
   return ui;
 }
 
@@ -127,7 +142,7 @@ export function showLevelUp(ui, choices, onPick) {
       <span class="card-tag">${choice.tag}</span>
       <span class="card-title">${choice.title}</span>
       <span class="card-desc">${choice.desc}</span>
-      <span class="card-key">Press ${i + 1}</span>`;
+      <span class="card-key">${isTouchDevice() ? 'Tap to choose' : `Press ${i + 1}`}</span>`;
     card.addEventListener('click', () => pickLevelUpChoice(ui, i));
     ui.levelupCards.appendChild(card);
   });

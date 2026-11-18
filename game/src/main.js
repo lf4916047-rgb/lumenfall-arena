@@ -61,6 +61,7 @@ const ui = buildUI({
   onStart: () => startRun(),
   onRestart: () => startRun(),
   onResume: () => resumeGame(),
+  onPause: () => pauseGame(),
   onMuteToggle: () => toggleMute(),
 });
 

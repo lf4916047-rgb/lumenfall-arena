@@ -6,6 +6,7 @@
 // dart, ringed spitter, hexagonal brute, and the crowned, rune-ringed Hollow King.
 
 import { COLORS } from './config.js';
+import { getTouchUI } from './input.js';
 
 const TAU = Math.PI * 2;
 
@@ -166,6 +167,50 @@ export function renderGame(ctx, game, width, height) {
     ctx.drawImage(dangerCanvas, 0, 0);
     ctx.globalAlpha = 1;
   }
+  // Touch controls ride above the world, and exist only on touch devices.
+  if (game.state === 'playing') drawTouchControls(ctx);
+}
+
+// The touch controls: a quiet dash ring bottom-right, and — while a thumb is down —
+// the stick's base ring with its knob. Two stroked circles apiece, no shadowBlur, so
+// a frame still costs nothing worth measuring. getTouchUI() is null off touch
+// devices, where this returns before touching a single pixel.
+function drawTouchControls(ctx) {
+  const ui = getTouchUI();
+  if (!ui) return;
+  ctx.save();
+  const d = ui.dash;
+  ctx.globalAlpha = d.active ? 0.92 : 0.55;
+  ctx.beginPath();
+  ctx.arc(d.x, d.y, d.r, 0, TAU);
+  ctx.fillStyle = d.active ? 'rgba(255, 179, 64, 0.30)' : 'rgba(14, 17, 46, 0.55)';
+  ctx.fill();
+  ctx.lineWidth = 2;
+  ctx.strokeStyle = 'rgba(255, 217, 122, 0.85)';
+  ctx.stroke();
+  ctx.fillStyle = '#ffd97a';
+  ctx.font = '800 11px system-ui, sans-serif';
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  ctx.fillText('DASH', d.x, d.y + 0.5);
+  ctx.globalAlpha = 1;
+  if (ui.stick) {
+    const s = ui.stick;
+    ctx.beginPath();
+    ctx.arc(s.baseX, s.baseY, s.baseR, 0, TAU);
+    ctx.fillStyle = 'rgba(120, 132, 255, 0.10)';
+    ctx.fill();
+    ctx.lineWidth = 1.5;
+    ctx.strokeStyle = 'rgba(190, 198, 255, 0.40)';
+    ctx.stroke();
+    ctx.beginPath();
+    ctx.arc(s.knobX, s.knobY, s.knobR, 0, TAU);
+    ctx.fillStyle = 'rgba(232, 234, 255, 0.38)';
+    ctx.fill();
+    ctx.strokeStyle = 'rgba(255, 255, 255, 0.55)';
+    ctx.stroke();
+  }
+  ctx.restore();
 }
 
 function drawBackground(ctx, game, width, height) {
