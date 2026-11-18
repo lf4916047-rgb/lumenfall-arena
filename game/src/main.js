@@ -13,6 +13,7 @@ import { makeLoadout, updateWeapons, buildChoices } from './weapons.js';
 import { makeDirector, updateDirector } from './director.js';
 import { initEffects, updateEffects, spawnTrailPuff, spawnMote } from './particles.js';
 import { initBackground, renderGame } from './render.js';
+import { onArtReady } from './sprites.js';
 import { makeScore, updateScore, settleScore } from './score.js';
 import { makeRelicState, buildRelicChoices, updateRelics } from './relics.js';
 import {
@@ -326,6 +327,9 @@ window.addEventListener('resize', resize);
 initInput(canvas);
 onFirstGesture(() => audio.ensureAudio());
 resize();
+// When the tileset art lands, rebake the world once so the arena floor is
+// laid from the pack's real stone tiles (the first bake used the fallback).
+onArtReady(() => resize());
 resetGame();
 showScreen(ui, 'title');
 setMutedIcon(ui, audio.isMuted());

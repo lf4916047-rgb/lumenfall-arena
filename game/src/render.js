@@ -6,14 +6,14 @@
 // dusk horizon of spires and broken pillars along the far wall, headless statues
 // and a fallen column at the edges. Everything that burns (the warden, bolts,
 // shards, the Hollow King) is composited additively over that plate so the arena
-// feels lit, not painted. The creatures themselves are pre-rendered sprites
-// (sprites.js bakes them once at load): a hooded Star-warden, fuzzy void moths,
-// bat-winged gloomwings, horned hexshell hulks, the floating Watcher, and the
-// tall robed Hollow King — the frame loop just blits the current frame.
+// feels lit, not painted. The creatures themselves are real pixel-art sprites
+// from 0x72's Dungeon Tileset II (CC0 — assets/CREDITS.md): a robed wizzard
+// for the Star-warden, wogols, chort imps, ogres, a hooded necromancer, and
+// the big demon as the Hollow King — the frame loop just blits the frame.
 
 import { COLORS } from './config.js';
 import { getTouchUI } from './input.js';
-import { getSprites, getShardSprite, blit, blitFlash, HOLLOW_HEART } from './sprites.js';
+import { getSprites, getShardSprite, getFloorArt, blit, blitFlash, HOLLOW_HEART } from './sprites.js';
 
 const TAU = Math.PI * 2;
 
@@ -334,6 +334,26 @@ export function initBackground(width, height, arena) {
     c.fillStyle = fill;
     c.fillRect(a.x, a.y, a.w, a.h);
 
+    // --- Stone tiles: the tileset's real flagstones (assets/CREDITS.md),
+    // laid at 3x under everything else and washed toward indigo so the
+    // pack's brown-grey stone sits in the court's palette. Their own cracks
+    // and chips come free; the wandering crack lines further down are drawn
+    // over them, and the mosaic tints across them.
+    const floor = getFloorArt();
+    if (floor) {
+      const tile = 48;
+      for (let ty = a.y; ty < a.y + a.h; ty += tile) {
+        for (let tx = a.x; tx < a.x + a.w; tx += tile) {
+          const dw = Math.min(tile, a.x + a.w - tx);
+          const dh = Math.min(tile, a.y + a.h - ty);
+          const img = floor.tiles[Math.floor(Math.random() * floor.tiles.length)];
+          c.drawImage(img, 0, 0, dw / 3, dh / 3, tx, ty, dw, dh);
+        }
+      }
+      c.fillStyle = 'rgba(43, 40, 108, 0.40)';
+      c.fillRect(a.x, a.y, a.w, a.h);
+    }
+
     // --- Radial mosaic: broad bands and wedges fanning from the court's heart.
     c.save();
     c.beginPath();
@@ -357,25 +377,27 @@ export function initBackground(width, height, arena) {
     }
     c.restore();
 
-    // --- Stone tiles: every tile its own tone — violet-worn, slate, lifted,
-    // sunk — laid over the mosaic, with dark grout in the seams.
-    const tile = 46;
-    for (let ty = a.y; ty < a.y + a.h; ty += tile) {
-      for (let tx = a.x; tx < a.x + a.w; tx += tile) {
-        const v = Math.random();
-        if (v < 0.12) c.fillStyle = 'rgba(64, 58, 120, 0.16)';
-        else if (v < 0.24) c.fillStyle = 'rgba(24, 40, 84, 0.20)';
-        else if (v < 0.55) c.fillStyle = 'rgba(88, 96, 190, 0.07)';
-        else c.fillStyle = 'rgba(0, 0, 10, 0.10)';
-        c.fillRect(tx, ty, Math.min(tile, a.x + a.w - tx), Math.min(tile, a.y + a.h - ty));
+    // --- Fallback tone tiles, only until the tileset art lands: every tile
+    // its own tone — violet-worn, slate, lifted, sunk — with dark grout.
+    if (!floor) {
+      const tile = 46;
+      for (let ty = a.y; ty < a.y + a.h; ty += tile) {
+        for (let tx = a.x; tx < a.x + a.w; tx += tile) {
+          const v = Math.random();
+          if (v < 0.12) c.fillStyle = 'rgba(64, 58, 120, 0.16)';
+          else if (v < 0.24) c.fillStyle = 'rgba(24, 40, 84, 0.20)';
+          else if (v < 0.55) c.fillStyle = 'rgba(88, 96, 190, 0.07)';
+          else c.fillStyle = 'rgba(0, 0, 10, 0.10)';
+          c.fillRect(tx, ty, Math.min(tile, a.x + a.w - tx), Math.min(tile, a.y + a.h - ty));
+        }
       }
+      c.strokeStyle = 'rgba(3, 4, 16, 0.5)';
+      c.lineWidth = 1.5;
+      c.beginPath();
+      for (let x = a.x + tile; x < a.x + a.w; x += tile) { c.moveTo(x, a.y); c.lineTo(x, a.y + a.h); }
+      for (let y = a.y + tile; y < a.y + a.h; y += tile) { c.moveTo(a.x, y); c.lineTo(a.x + a.w, y); }
+      c.stroke();
     }
-    c.strokeStyle = 'rgba(3, 4, 16, 0.5)';
-    c.lineWidth = 1.5;
-    c.beginPath();
-    for (let x = a.x + tile; x < a.x + a.w; x += tile) { c.moveTo(x, a.y); c.lineTo(x, a.y + a.h); }
-    for (let y = a.y + tile; y < a.y + a.h; y += tile) { c.moveTo(a.x, y); c.lineTo(a.x + a.w, y); }
-    c.stroke();
 
     // --- Cracks wander tile to tile; worn patches pool dark or shine faintly.
     c.strokeStyle = 'rgba(2, 3, 12, 0.45)';
@@ -470,6 +492,20 @@ export function initBackground(width, height, arena) {
     bakeStatue(c, a.x + a.w - 52, a.y + a.h * 0.36, 56, false);
     bakeStatue(c, a.x + 56, a.y + a.h * 0.58, 44, true);
     bakeFallenColumn(c, a.x + a.w * 0.10, a.y + a.h * 0.82);
+
+    // --- The tileset's stone pillars stand at the court's flanks, shaded
+    // toward the palette like the floor they rise from.
+    if (floor) {
+      for (const [px, py] of [[a.x + 34, a.y + a.h * 0.30], [a.x + a.w - 67, a.y + a.h * 0.55]]) {
+        c.fillStyle = 'rgba(2, 3, 12, 0.35)';
+        c.beginPath();
+        c.ellipse(px + 16, py + 102, 22, 6, 0, 0, TAU);
+        c.fill();
+        c.drawImage(floor.column, px, py, 33, 99);
+        c.fillStyle = 'rgba(30, 28, 96, 0.30)';
+        c.fillRect(px, py, 33, 99);
+      }
+    }
 
     // --- The far wall: a dusk horizon band inside the arena's top edge.
     // Spires and broken towers silhouette against a violet sky and a pale
@@ -667,6 +703,8 @@ export function initBackground(width, height, arena) {
 }
 
 export function renderGame(ctx, game, width, height) {
+  // The cast is pixel art: it must scale by whole, crisp steps, never smeared.
+  ctx.imageSmoothingEnabled = false;
   drawBackground(ctx, game, width, height);
   ctx.save();
   if (game.shake > 0.2) {
@@ -872,25 +910,35 @@ function drawEnemy(ctx, game, enemy) {
   } else {
     const sprites = getSprites();
     const set = sprites[enemy.kind][enemy.elite ? 'elite' : 'normal'];
-    // Each kind lives at its own tempo: the moth's wingbeat is frantic, the
-    // Watcher's tentacles barely stir. framePhase staggers a swarm out of sync.
+    // The tileset's cast all face front, so facing is a horizontal flip and
+    // the life is in the cycles: the wogol's hover-flap, the chort's scamper,
+    // the ogre's lumber, the necromancer's slow drift. framePhase staggers
+    // a swarm out of sync.
+    const speed = Math.hypot(enemy.vx, enemy.vy);
+    let cycle = 'idle';
     let frame = 0;
+    let flip = false;
     if (enemy.kind === 'moth') {
-      frame = Math.floor(game.time * 15 + enemy.framePhase * 3) % 3;
-      ctx.rotate(Math.atan2(enemy.vy, enemy.vx));
+      frame = Math.floor(game.time * 13 + enemy.framePhase * 4) % 4;
+      flip = enemy.vx < 0;
+      ctx.translate(0, Math.sin(game.time * 5.2 + enemy.framePhase * TAU) * 2.2);
     } else if (enemy.kind === 'darter') {
-      frame = Math.floor(game.time * 11 + enemy.framePhase * 2) % 2;
-      ctx.rotate(Math.atan2(enemy.vy, enemy.vx));
+      cycle = speed > 24 ? 'run' : 'idle';
+      frame = Math.floor(game.time * (cycle === 'run' ? 13 : 5) + enemy.framePhase * 4) % 4;
+      flip = enemy.vx < 0;
     } else if (enemy.kind === 'brute') {
-      frame = Math.floor(game.time * 5.5 + enemy.framePhase) % 2;
-      ctx.rotate(Math.atan2(enemy.vy, enemy.vx) + Math.sin(enemy.wobble * 0.6) * 0.05);
+      cycle = speed > 6 ? 'run' : 'idle';
+      frame = Math.floor(game.time * (cycle === 'run' ? 7.5 : 3.5) + enemy.framePhase * 4) % 4;
+      flip = enemy.vx < 0;
+      ctx.rotate(Math.sin(enemy.wobble * 0.6) * 0.03);
     } else if (enemy.kind === 'spitter') {
-      frame = Math.floor(game.time * 1.7 + enemy.framePhase) % 2;
-      ctx.rotate(Math.sin(enemy.wobble * 0.3) * 0.2);
+      frame = Math.floor(game.time * 3.4 + enemy.framePhase * 4) % 4;
+      flip = game.player.x < enemy.x;
+      ctx.rotate(Math.sin(enemy.wobble * 0.3) * 0.05);
     }
-    blit(ctx, set, frame, enemy.radius);
-    if (enemy.kind === 'spitter') drawWatcherPupil(ctx, game, enemy);
-    if (enemy.flash > 0) blitFlash(ctx, set, frame, enemy.radius, (enemy.flash / 0.09) * 0.8);
+    if (flip) ctx.scale(-1, 1);
+    blit(ctx, set, cycle, frame, enemy.radius);
+    if (enemy.flash > 0) blitFlash(ctx, set, cycle, frame, enemy.radius, (enemy.flash / 0.09) * 0.8);
   }
   if (enemy.elite) {
     ctx.strokeStyle = COLORS.bossCrown;
@@ -917,26 +965,10 @@ function drawEnemy(ctx, game, enemy) {
   }
 }
 
-// The Watcher's pupil is the one piece of the sprite that stays live: it rolls
-// in its socket to track the warden, so the horror is always looking at you.
-function drawWatcherPupil(ctx, game, enemy) {
-  const r = enemy.radius;
-  const look = Math.atan2(game.player.y - enemy.y, game.player.x - enemy.x);
-  const px = Math.cos(look) * r * 0.13;
-  const py = Math.sin(look) * r * 0.13;
-  ctx.fillStyle = '#2b021e';
-  ctx.beginPath();
-  ctx.arc(px, py, r * 0.17, 0, TAU);
-  ctx.fill();
-  ctx.fillStyle = 'rgba(255, 255, 255, 0.85)';
-  ctx.beginPath();
-  ctx.arc(px - r * 0.05, py - r * 0.05, r * 0.05, 0, TAU);
-  ctx.fill();
-}
-
-// The Hollow King: layered auras and his turning rune ring stay live, but the King
-// himself is the baked sprite — crown, skull, ribcage and robe — bobbing slowly
-// and swaying as he comes. Live swirl arcs still turn inside his dark heart.
+// The Hollow King: layered auras and his turning rune ring stay live, but the
+// King himself is the tileset's big demon, breathing through its idle cycle
+// and striding through its run cycle, bobbing slowly as he comes. Live swirl
+// arcs still turn inside his dark heart.
 function drawBoss(ctx, game, enemy) {
   const r = enemy.radius;
   drawGlow(ctx, 0, 0, r * 2.9, '#5c1440', 0.30);
@@ -963,16 +995,20 @@ function drawBoss(ctx, game, enemy) {
   }
   ctx.restore();
 
-  // The King himself, drawn larger than his collision body — he should loom.
+  // The King himself, drawn larger than his collision body — he should loom,
+  // turned toward the warden he hunts.
   const sprites = getSprites();
   const set = sprites.boss;
-  const frame = Math.floor(game.time * 1.1) % 2;
+  const speed = Math.hypot(enemy.vx ?? 0, enemy.vy ?? 0);
+  const cycle = speed > 6 ? 'run' : 'idle';
+  const frame = Math.floor(game.time * (cycle === 'run' ? 6 : 3.6)) % 4;
   const scale = r * 1.32;
   ctx.save();
   ctx.translate(0, Math.sin(game.time * 1.6) * 4);
   ctx.rotate(Math.sin(game.time * 0.9) * 0.02);
-  blit(ctx, set, frame, scale);
-  if (enemy.flash > 0) blitFlash(ctx, set, frame, scale, (enemy.flash / 0.09) * 0.8);
+  if (game.player.x < enemy.x) ctx.scale(-1, 1);
+  blit(ctx, set, cycle, frame, scale);
+  if (enemy.flash > 0) blitFlash(ctx, set, cycle, frame, scale, (enemy.flash / 0.09) * 0.8);
   ctx.restore();
 
   // Swirl arcs turning inside the dark of his heart.
@@ -1066,16 +1102,19 @@ function drawPlayer(ctx, game) {
   if (player.iframes > 0 && game.state === 'playing' && Math.floor(game.time * 14) % 2 === 0) {
     ctx.globalAlpha = 0.35;
   }
-  // The warden himself: the baked hooded figure, turned toward his stride, his
-  // cloak swaying a breath behind the turn. Two frames trade as he moves.
+  // The warden himself: the tileset's robed wizzard, front-facing like the
+  // rest of the cast — he flips toward his stride, trades idle for the run
+  // cycle as he moves, and sways a breath over the turn.
   const sprites = getSprites();
   const moving = player.trail && player.trail.length > 0;
-  const frame = moving ? Math.floor(game.time * 8) % 2 : 0;
-  const sway = Math.sin(game.time * (moving ? 6.4 : 2.2)) * (moving ? 0.06 : 0.03);
+  const cycle = moving ? 'run' : 'idle';
+  const frame = Math.floor(game.time * (moving ? 11 : 4.5)) % 4;
+  const sway = Math.sin(game.time * (moving ? 6.4 : 2.2)) * (moving ? 0.04 : 0.02);
   ctx.save();
   ctx.translate(player.x, player.y);
-  ctx.rotate((player.faceAngle ?? 0) + sway);
-  blit(ctx, sprites.player, frame, player.radius);
+  if (Math.cos(player.faceAngle ?? 0) < 0) ctx.scale(-1, 1);
+  ctx.rotate(sway);
+  blit(ctx, sprites.player, cycle, frame, player.radius);
   ctx.restore();
   ctx.globalAlpha = 1;
   // Dash readiness ring.
